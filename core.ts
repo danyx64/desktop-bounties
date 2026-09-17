@@ -1,4 +1,4 @@
-import { filters, mapMangledModuleLazy } from "@webpack";
+import { filters, findStoreLazy, mapMangledModuleLazy } from "@webpack";
 import { NavigationRouter, RestAPI, UserStore } from "@webpack/common";
 
 export const QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT = 4;
@@ -32,19 +32,19 @@ interface DiscordSession {
     lastUsedTimestamp?: number;
 }
 
-// Reuse Discord's real ad/heartbeat sessions when the current client exposes
-// them. This mirrors the official mobile BountyActionCreators request. Both are
-// optional server-side, so we keep safe fallbacks if Discord changes internals.
-const NativeAdSession = mapMangledModuleLazy("AD_SESSION_RESET", {
-    getSession: filters.byCode("AD_SESSION_RESET", "lastUsedTimestamp")
-}) as {
-    getSession?: (markUsed?: boolean) => DiscordSession | null;
-};
-
+// Discord's heartbeat session is token-aware and is reset when the active
+// account changes, so it is safe to reuse for the mobile-style request.
 const NativeHeartbeatSession = mapMangledModuleLazy("LAST_CLIENT_HEARTBEAT_SESSION", {
     getSession: filters.byCode("handleUpdateTimeSpentSessionId", "lastUsedTimestamp")
 }) as {
     getSession?: (updateGateway?: boolean) => Promise<DiscordSession | null>;
+};
+
+// The official mobile request also passes the current connection type in the
+// request context. RestAPI's public typings do not expose `context`, but the
+// underlying Discord HTTP client accepts it.
+const NetworkStore = findStoreLazy("NetworkStore") as {
+    getType?: () => unknown;
 };
 
 export interface BountyCTA {
@@ -128,6 +128,9 @@ function createUuid(): string {
     });
 }
 
+// Keep one ad-session UUID per Discord account. The UUID is client-generated in
+// Discord itself; scoping it here avoids carrying account A's ad session into
+// account B when using Discord's account switcher.
 function getFallbackAdSessionId(): string {
     const now = Date.now();
     const key = scopedStorageKey(AD_SESSION_STORAGE_KEY);
@@ -149,13 +152,6 @@ function getFallbackAdSessionId(): string {
 }
 
 export function getAdSessionId(): string {
-    try {
-        const native = NativeAdSession.getSession?.(true);
-        if (native?.uuid) return native.uuid;
-    } catch (error) {
-        console.warn("[DesktopBounties] Could not reuse Discord ad session", error);
-    }
-
     return getFallbackAdSessionId();
 }
 
@@ -165,6 +161,14 @@ async function getHeartbeatSessionId(): Promise<string | undefined> {
         return native?.uuid || undefined;
     } catch (error) {
         console.warn("[DesktopBounties] Could not reuse Discord heartbeat session", error);
+        return undefined;
+    }
+}
+
+function getConnectionType(): unknown {
+    try {
+        return NetworkStore.getType?.();
+    } catch {
         return undefined;
     }
 }
@@ -266,11 +270,13 @@ export function getBountyContent(decision: AdDecision): BountyCreativeContent | 
 export async function fetchBounties(): Promise<LoadResult> {
     clearLegacyGlobalState();
 
-    // This follows Discord mobile's BountyActionCreators request:
-    // placement=QUEST_HOME_MOBILE_CAROUSEL (4), five decisions, current ad
-    // session, and the current analytics heartbeat session when available.
+    // Mirror Discord mobile's BountyActionCreators request as closely as the
+    // desktop client allows: placement 4, five decisions, an account-scoped ad
+    // session, the real heartbeat session, and the current connection type.
     const clientAdSessionId = getAdSessionId();
     const clientHeartbeatSessionId = await getHeartbeatSessionId();
+    const connectionType = getConnectionType();
+
     const query: Record<string, string | number> = {
         placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
         num_decisions_requested: MAX_DECISIONS,
@@ -281,19 +287,44 @@ export async function fetchBounties(): Promise<LoadResult> {
         query.client_heartbeat_session_id = clientHeartbeatSessionId;
     }
 
-    const response = await RestAPI.get({
+    const request: any = {
         url: "/quests/get-decisions",
         query
-    });
+    };
 
+    if (connectionType != null) {
+        request.context = { connection_type: connectionType };
+    }
+
+    const response = await (RestAPI.get as any)(request);
     const body = (response?.body ?? {}) as DecisionsResponse;
     const decisions = Array.isArray(body.decisions) ? body.decisions : [];
 
+    // Do not suppress server-returned creatives based on local history. The
+    // server is authoritative for what is currently deliverable; local state is
+    // only used for progress/claim UX after a Bounty is shown.
     const bounties = decisions.filter(decision => {
         const content = getBountyContent(decision);
-        return getCreativeType(decision) === BOUNTY_CREATIVE_TYPE
-            && content != null
-            && !isLocallyClaimed(content.id);
+        return getCreativeType(decision) === BOUNTY_CREATIVE_TYPE && content != null;
+    });
+
+    console.info("[DesktopBounties] scan result", {
+        userId: currentUserId(),
+        placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
+        requested: MAX_DECISIONS,
+        returned: decisions.length,
+        bounties: bounties.length,
+        hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
+        connectionType,
+        decisions: decisions.map((decision, index) => ({
+            index,
+            type: getCreativeType(decision) ?? null,
+            creativeId: getBountyContent(decision)?.id
+                ?? decision.ad_identifiers?.creative_id
+                ?? decision.ad_identifiers?.ad_content_id
+                ?? null,
+            hasCreative: decision.creative != null
+        }))
     });
 
     return {
