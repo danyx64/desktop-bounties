@@ -16,7 +16,6 @@ const MAX_DECISIONS = 15;
 const AD_SESSION_STORAGE_KEY = "vc-desktop-bounties-ad-session-v1";
 const PROGRESS_STORAGE_KEY = "vc-desktop-bounties-progress-v1";
 const CLAIMED_STORAGE_KEY = "vc-desktop-bounties-claimed-v1";
-const SIDEBAR_DATA_ATTRIBUTE = "vcDesktopBountiesNav";
 
 const AD_SESSION_IDLE_MS = 30 * 60 * 1000;
 const AD_SESSION_MAX_MS = 12 * 60 * 60 * 1000;
@@ -79,9 +78,6 @@ interface StoredAdSession {
 }
 
 type ClaimState = "idle" | "claiming" | "claimed" | "error";
-
-let sidebarObserver: MutationObserver | null = null;
-let sidebarFrame = 0;
 
 function createUuid(): string {
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -284,6 +280,37 @@ async function claimBounty(decision: AdDecision, clientAdSessionId: string) {
     });
 }
 
+function BountyIcon() {
+    return (
+        <svg className="vc-desktop-bounties-navIcon" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="6.25" stroke="currentColor" strokeWidth="2" />
+            <circle cx="12" cy="12" r="2.25" fill="currentColor" />
+            <path
+                d="M12 2.5V5M12 19V21.5M2.5 12H5M19 12H21.5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+            />
+        </svg>
+    );
+}
+
+function BountiesNavItem() {
+    return (
+        <li className="vc-desktop-bounties-navShell" data-vc-desktop-bounties-nav="true">
+            <button
+                type="button"
+                className="vc-desktop-bounties-navButton"
+                aria-label="Bounties"
+                onClick={openBountiesModal}
+            >
+                <BountyIcon />
+                <span>Bounties</span>
+            </button>
+        </li>
+    );
+}
+
 function BountyCard({
     decision,
     clientAdSessionId
@@ -344,6 +371,7 @@ function BountyCard({
             if (
                 !isPlayingRef.current
                 || document.visibilityState !== "visible"
+                || !document.hasFocus()
                 || claimState === "claimed"
                 || claimState === "claiming"
             ) {
@@ -531,7 +559,7 @@ function BountiesModal(props: any) {
         >
             <div className="vc-desktop-bounties-root">
                 <div className="vc-desktop-bounties-intro">
-                    Bounties returned by Discord for the mobile Quest Home placement. Watch progress only advances while the video is actually playing in a visible Discord window. When the required watch time is reached, the plugin sends Discord's creative reward claim request.
+                    Bounties returned by Discord for the mobile Quest Home placement. Watch progress only advances while the video is actually playing in a visible, focused Discord window. When the required watch time is reached, the plugin sends Discord's creative reward claim request.
                 </div>
 
                 {loading && !result && (
@@ -579,87 +607,6 @@ export function openBountiesModal() {
     openModal(props => <BountiesModal {...props} />);
 }
 
-function findQuestHomeLink(): HTMLAnchorElement | null {
-    const links = [...document.querySelectorAll<HTMLAnchorElement>('a[href*="quest-home"]')];
-
-    return links.find(link => {
-        try {
-            return new URL(link.href, location.href).pathname === "/quest-home"
-                && link.getClientRects().length > 0;
-        } catch {
-            return false;
-        }
-    }) ?? null;
-}
-
-function installSidebarEntry() {
-    const questLink = findQuestHomeLink();
-    if (!questLink) return;
-
-    const questItem = questLink.closest("li") ?? questLink.parentElement;
-    const parent = questItem?.parentElement;
-    if (!questItem || !parent) return;
-
-    if (parent.querySelector(`[data-${SIDEBAR_DATA_ATTRIBUTE.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)}]`)) {
-        return;
-    }
-
-    const shell = document.createElement(questItem.tagName.toLowerCase() === "li" ? "li" : "div");
-    shell.dataset[SIDEBAR_DATA_ATTRIBUTE] = "true";
-    shell.className = "vc-desktop-bounties-navShell";
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "vc-desktop-bounties-navButton";
-    button.setAttribute("aria-label", "Bounties");
-    button.innerHTML = `
-        <svg class="vc-desktop-bounties-navIcon" aria-hidden="true" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="6.25" stroke="currentColor" stroke-width="2" />
-            <circle cx="12" cy="12" r="2.25" fill="currentColor" />
-            <path d="M12 2.5V5M12 19V21.5M2.5 12H5M19 12H21.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-        </svg>
-        <span>Bounties</span>
-    `;
-    button.addEventListener("click", openBountiesModal);
-
-    shell.appendChild(button);
-    questItem.insertAdjacentElement("afterend", shell);
-}
-
-function scheduleSidebarEntry() {
-    if (sidebarFrame) return;
-
-    sidebarFrame = requestAnimationFrame(() => {
-        sidebarFrame = 0;
-        installSidebarEntry();
-    });
-}
-
-function startSidebarEntry() {
-    stopSidebarEntry();
-    installSidebarEntry();
-
-    if (!document.body) return;
-
-    sidebarObserver = new MutationObserver(scheduleSidebarEntry);
-    sidebarObserver.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
-}
-
-function stopSidebarEntry() {
-    sidebarObserver?.disconnect();
-    sidebarObserver = null;
-
-    if (sidebarFrame) {
-        cancelAnimationFrame(sidebarFrame);
-        sidebarFrame = 0;
-    }
-
-    document.querySelectorAll<HTMLElement>("[data-vc-desktop-bounties-nav]").forEach(node => node.remove());
-}
-
 export default definePlugin({
     name: "DesktopBounties",
     description: "Adds mobile Quest Bounties to Discord desktop with real watch progress and reward claiming.",
@@ -668,12 +615,28 @@ export default definePlugin({
         id: 1533113566075424881n
     }],
 
-    start() {
-        startSidebarEntry();
-    },
+    patches: [{
+        // Discord's Home/DM virtual list renders Friends/Nitro/Shop/Quests as pre-rendered children.
+        // Add Bounties there instead of manipulating the DOM so row height and scrolling stay correct.
+        find: '"dm-quick-launcher"===',
+        replacement: {
+            match: /(getDerivedStateFromProps\(\i\)\{let\{children:(\i),privateChannelIds:\i\}=\i;)/,
+            replace: "$1$2=$self.addBountiesChild($2);"
+        }
+    }],
 
-    stop() {
-        stopSidebarEntry();
+    addBountiesChild(children: any) {
+        if (children == null) return children;
+
+        const list = Array.isArray(children) ? children : React.Children.toArray(children);
+        if (list.some((child: any) => child?.key === "vc-desktop-bounties-nav")) return list;
+
+        // In the current Discord Home list, Quests is the final static row, so appending here
+        // places Bounties directly underneath it while keeping the virtual list aware of the row.
+        return [
+            ...list,
+            <BountiesNavItem key="vc-desktop-bounties-nav" />
+        ];
     },
 
     commands: [{
