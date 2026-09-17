@@ -13,8 +13,9 @@
     padding: 0 8px;
     border: 0;
     border-radius: 8px;
+    outline: none;
     background: transparent;
-    color: var(--channels-default, var(--interactive-normal));
+    color: var(--text-default, #dbdee1);
     font: inherit;
     font-size: 16px;
     font-weight: 500;
@@ -23,36 +24,65 @@
     transition: background-color 120ms ease, color 120ms ease;
 }
 
+.vc-desktop-bounties-navLabel {
+    color: inherit;
+}
+
 .vc-desktop-bounties-navButton:hover {
-    background: var(--background-mod-subtle);
-    color: var(--interactive-hover);
+    background: var(--background-mod-subtle, rgb(255 255 255 / 6%));
+    color: var(--text-strong, #f2f3f5);
 }
 
 .vc-desktop-bounties-navButton--active,
 .vc-desktop-bounties-navButton--active:hover {
-    background: var(--background-mod-strong);
-    color: var(--interactive-active);
+    background: var(--background-mod-strong, rgb(255 255 255 / 12%));
+    color: var(--text-strong, #f2f3f5);
+}
+
+.vc-desktop-bounties-navButton:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--focus-primary, var(--brand-500, #5865f2));
 }
 
 /* When Bounties is selected, avoid leaving the native Quests row visually selected too. */
 li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [aria-current="page"] {
     background: transparent !important;
-    color: var(--channels-default, var(--interactive-normal)) !important;
+    color: var(--text-default, #dbdee1) !important;
 }
 
 .vc-desktop-bounties-navIcon {
     width: 24px;
     height: 24px;
     flex: 0 0 auto;
+    color: currentColor;
 }
 
 .vc-desktop-bounties-page {
+    --vc-db-bg: var(--background-base-lowest, var(--background-primary, #111214));
+    --vc-db-surface: var(--background-base-low, var(--background-secondary, #1e1f22));
+    --vc-db-surface-raised: var(--background-base-lower, var(--background-tertiary, #2b2d31));
+    --vc-db-surface-hover: var(--background-mod-subtle, rgb(255 255 255 / 6%));
+    --vc-db-surface-active: var(--background-mod-strong, rgb(255 255 255 / 12%));
+    --vc-db-text: var(--text-default, var(--text-normal, #dbdee1));
+    --vc-db-text-strong: var(--text-strong, var(--header-primary, #f2f3f5));
+    --vc-db-text-muted: var(--text-muted, #949ba4);
+    --vc-db-border: var(--border-subtle, rgb(255 255 255 / 8%));
+    --vc-db-border-strong: var(--border-strong, rgb(255 255 255 / 16%));
+    --vc-db-brand: var(--brand-500, #5865f2);
+    --vc-db-positive: var(--status-positive, #23a55a);
+    --vc-db-danger: var(--status-danger, #f23f43);
+
     width: 100%;
     height: 100%;
     min-height: 0;
     overflow: auto;
-    background: var(--background-primary);
-    color: var(--text-normal);
+    background: var(--vc-db-bg);
+    color: var(--vc-db-text);
+}
+
+.vc-desktop-bounties-page *,
+.vc-desktop-bounties-page *::before,
+.vc-desktop-bounties-page *::after {
+    box-sizing: border-box;
 }
 
 .vc-desktop-bounties-pageInner {
@@ -65,12 +95,13 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 24px;
+    gap: 28px;
     padding: 24px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--vc-db-border);
     border-radius: 16px;
-    background: linear-gradient(135deg, var(--background-secondary), var(--background-primary));
-    box-shadow: 0 1px 0 rgb(0 0 0 / 8%);
+    background: var(--vc-db-surface);
+    color: var(--vc-db-text);
+    box-shadow: 0 1px 0 rgb(0 0 0 / 10%);
 }
 
 .vc-desktop-bounties-headingGroup {
@@ -87,8 +118,8 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     place-items: center;
     flex: 0 0 auto;
     border-radius: 14px;
-    background: var(--brand-500);
-    color: white;
+    background: var(--vc-db-brand);
+    color: #fff;
 }
 
 .vc-desktop-bounties-headingIcon svg {
@@ -96,9 +127,13 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     height: 28px;
 }
 
+.vc-desktop-bounties-headingText {
+    min-width: 0;
+}
+
 .vc-desktop-bounties-eyebrow {
     margin-bottom: 4px;
-    color: var(--text-muted);
+    color: var(--vc-db-text-muted);
     font-size: 11px;
     font-weight: 700;
     letter-spacing: .08em;
@@ -106,37 +141,69 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 
 .vc-desktop-bounties-pageHeader h1 {
     margin: 0;
-    color: var(--header-primary);
+    color: var(--vc-db-text-strong) !important;
     font-size: 30px;
+    font-weight: 700;
     line-height: 1.1;
 }
 
 .vc-desktop-bounties-pageHeader p {
     max-width: 700px;
     margin: 8px 0 0;
-    color: var(--text-muted);
+    color: var(--vc-db-text-muted) !important;
     font-size: 14px;
     line-height: 1.45;
 }
 
+.vc-desktop-bounties-summaryLine {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-top: 14px;
+    color: var(--vc-db-text-muted);
+    font-size: 12px;
+}
+
+.vc-desktop-bounties-summaryLine strong {
+    color: var(--vc-db-text-strong);
+    font-weight: 700;
+}
+
+.vc-desktop-bounties-headerActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.vc-desktop-bounties-orbPill,
+.vc-desktop-bounties-refreshButton,
+.vc-desktop-bounties-primaryButton,
+.vc-desktop-bounties-secondaryButton {
+    border: 0;
+    outline: none;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease, transform 120ms ease, opacity 120ms ease;
+}
+
 .vc-desktop-bounties-orbPill {
-    min-height: 40px;
+    min-height: 38px;
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    flex: 0 0 auto;
     padding: 0 12px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--vc-db-border);
     border-radius: 999px;
-    background: var(--background-tertiary);
-    color: var(--text-normal);
-    font: inherit;
-    cursor: pointer;
-    transition: background-color 120ms ease, transform 120ms ease;
+    background: var(--vc-db-surface-raised);
+    color: var(--vc-db-text);
 }
 
 .vc-desktop-bounties-orbPill:hover {
-    background: var(--background-mod-strong);
+    background: var(--vc-db-surface-active);
+    color: var(--vc-db-text-strong);
 }
 
 .vc-desktop-bounties-orbPill:active {
@@ -146,74 +213,18 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 .vc-desktop-bounties-orbIcon {
     width: 20px;
     height: 20px;
-    color: var(--brand-500);
+    color: var(--vc-db-brand);
 }
 
 .vc-desktop-bounties-orbValue {
-    color: var(--header-primary);
-    font-size: 15px;
+    color: var(--vc-db-text-strong) !important;
+    font-size: 14px;
     font-weight: 700;
 }
 
 .vc-desktop-bounties-orbLabel {
-    color: var(--text-muted);
+    color: var(--vc-db-text-muted) !important;
     font-size: 12px;
-}
-
-.vc-desktop-bounties-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin: 24px 0 18px;
-}
-
-.vc-desktop-bounties-tabs {
-    display: flex;
-    gap: 4px;
-    padding: 4px;
-    border-radius: 10px;
-    background: var(--background-secondary);
-}
-
-.vc-desktop-bounties-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    min-height: 34px;
-    padding: 0 11px;
-    border: 0;
-    border-radius: 7px;
-    background: transparent;
-    color: var(--text-muted);
-    font: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.vc-desktop-bounties-tab:hover {
-    color: var(--interactive-hover);
-}
-
-.vc-desktop-bounties-tab--active {
-    background: var(--background-mod-strong);
-    color: var(--interactive-active);
-}
-
-.vc-desktop-bounties-tabCount {
-    min-width: 20px;
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: var(--background-tertiary);
-    color: var(--text-muted);
-    font-size: 11px;
-    text-align: center;
-}
-
-.vc-desktop-bounties-tab--active .vc-desktop-bounties-tabCount {
-    background: var(--background-primary);
-    color: var(--text-normal);
 }
 
 .vc-desktop-bounties-refreshButton,
@@ -221,38 +232,132 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 .vc-desktop-bounties-secondaryButton {
     min-height: 36px;
     padding: 0 14px;
-    border: 0;
     border-radius: 8px;
-    font: inherit;
     font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
 }
 
 .vc-desktop-bounties-refreshButton,
 .vc-desktop-bounties-secondaryButton {
-    background: var(--button-secondary-background);
-    color: var(--button-secondary-text);
+    background: var(--vc-db-surface-raised);
+    color: var(--vc-db-text-strong);
 }
 
 .vc-desktop-bounties-refreshButton:hover:not(:disabled),
 .vc-desktop-bounties-secondaryButton:hover:not(:disabled) {
-    background: var(--button-secondary-background-hover);
+    background: var(--vc-db-surface-active);
 }
 
 .vc-desktop-bounties-primaryButton {
-    background: var(--button-positive-background, var(--brand-500));
-    color: var(--white-500, white);
+    background: var(--vc-db-brand);
+    color: #fff;
 }
 
 .vc-desktop-bounties-primaryButton:hover {
-    filter: brightness(1.06);
+    filter: brightness(1.07);
 }
 
 .vc-desktop-bounties-refreshButton:disabled,
 .vc-desktop-bounties-secondaryButton:disabled {
-    opacity: .5;
+    opacity: .45;
     cursor: not-allowed;
+}
+
+.vc-desktop-bounties-orbPill:focus-visible,
+.vc-desktop-bounties-refreshButton:focus-visible,
+.vc-desktop-bounties-primaryButton:focus-visible,
+.vc-desktop-bounties-secondaryButton:focus-visible {
+    box-shadow: 0 0 0 2px var(--vc-db-bg), 0 0 0 4px var(--focus-primary, var(--vc-db-brand));
+}
+
+.vc-desktop-bounties-state {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 18px;
+    padding: 14px 16px;
+    border: 1px solid var(--vc-db-border);
+    border-radius: 10px;
+    background: var(--vc-db-surface);
+    color: var(--vc-db-text);
+}
+
+.vc-desktop-bounties-error {
+    border-color: color-mix(in srgb, var(--vc-db-danger) 42%, var(--vc-db-border));
+}
+
+.vc-desktop-bounties-error strong {
+    color: var(--vc-db-danger) !important;
+}
+
+.vc-desktop-bounties-error span {
+    color: var(--vc-db-text-muted) !important;
+}
+
+.vc-desktop-bounties-section {
+    margin-top: 30px;
+}
+
+.vc-desktop-bounties-section--completed {
+    padding-top: 28px;
+    border-top: 1px solid var(--vc-db-border);
+}
+
+.vc-desktop-bounties-sectionHeader {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.vc-desktop-bounties-sectionTitleRow {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.vc-desktop-bounties-sectionTitleRow h2 {
+    margin: 0;
+    color: var(--vc-db-text-strong) !important;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.vc-desktop-bounties-sectionHeader p {
+    margin: 5px 0 0;
+    color: var(--vc-db-text-muted) !important;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.vc-desktop-bounties-sectionCount {
+    min-width: 24px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--vc-db-surface-raised);
+    color: var(--vc-db-text) !important;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.vc-desktop-bounties-sectionCheck,
+.vc-desktop-bounties-emptyCheck {
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--vc-db-positive) 18%, var(--vc-db-surface));
+    color: var(--vc-db-positive);
+}
+
+.vc-desktop-bounties-sectionCheck svg,
+.vc-desktop-bounties-emptyCheck svg {
+    width: 16px;
+    height: 16px;
 }
 
 .vc-desktop-bounties-grid,
@@ -265,24 +370,25 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 .vc-desktop-bounties-card,
 .vc-desktop-bounties-skeletonCard {
     overflow: hidden;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--vc-db-border);
     border-radius: 14px;
-    background: var(--background-secondary);
+    background: var(--vc-db-surface);
 }
 
 .vc-desktop-bounties-card {
+    color: var(--vc-db-text);
     transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
 
 .vc-desktop-bounties-card:hover {
-    border-color: var(--border-strong);
+    border-color: var(--vc-db-border-strong);
     transform: translateY(-1px);
-    box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
 }
 
 .vc-desktop-bounties-card--completed {
-    border-color: var(--status-positive);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-positive) 22%, transparent);
+    border-color: color-mix(in srgb, var(--vc-db-positive) 68%, var(--vc-db-border));
+    box-shadow: inset 3px 0 0 var(--vc-db-positive);
 }
 
 .vc-desktop-bounties-media {
@@ -290,7 +396,7 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     width: 100%;
     aspect-ratio: 16 / 9;
     overflow: hidden;
-    background: var(--background-tertiary);
+    background: var(--vc-db-surface-raised);
 }
 
 .vc-desktop-bounties-media img,
@@ -302,7 +408,7 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 }
 
 .vc-desktop-bounties-card--completed .vc-desktop-bounties-media img {
-    filter: saturate(.75) brightness(.72);
+    filter: saturate(.72) brightness(.7);
 }
 
 .vc-desktop-bounties-mediaFallback {
@@ -310,12 +416,43 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     height: 100%;
     display: grid;
     place-items: center;
-    color: var(--text-muted);
+    color: var(--vc-db-text-muted);
 }
 
 .vc-desktop-bounties-mediaFallback svg {
     width: 54px;
     height: 54px;
+}
+
+.vc-desktop-bounties-statusPill {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 8px;
+    border: 1px solid rgb(255 255 255 / 14%);
+    border-radius: 999px;
+    background: rgb(17 18 20 / 78%);
+    color: #fff !important;
+    font-size: 11px;
+    font-weight: 700;
+    backdrop-filter: blur(8px);
+}
+
+.vc-desktop-bounties-statusPill--progress {
+    background: color-mix(in srgb, var(--vc-db-brand) 82%, #111214);
+}
+
+.vc-desktop-bounties-statusPill--completed {
+    background: color-mix(in srgb, var(--vc-db-positive) 84%, #111214);
+}
+
+.vc-desktop-bounties-statusPill svg {
+    width: 13px;
+    height: 13px;
 }
 
 .vc-desktop-bounties-completedOverlay {
@@ -325,8 +462,8 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     align-items: center;
     justify-content: center;
     gap: 10px;
-    background: rgb(0 0 0 / 45%);
-    color: white;
+    background: rgb(0 0 0 / 48%);
+    color: #fff !important;
     font-size: 20px;
     font-weight: 700;
     letter-spacing: .01em;
@@ -338,7 +475,8 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     display: grid;
     place-items: center;
     border-radius: 50%;
-    background: var(--status-positive);
+    background: var(--vc-db-positive);
+    color: #fff;
 }
 
 .vc-desktop-bounties-completedCheck svg {
@@ -351,6 +489,7 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     flex-direction: column;
     gap: 13px;
     padding: 16px;
+    color: var(--vc-db-text);
 }
 
 .vc-desktop-bounties-titleRow {
@@ -377,37 +516,19 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 
 .vc-desktop-bounties-titleText strong {
     overflow: hidden;
-    color: var(--header-primary);
+    color: var(--vc-db-text-strong) !important;
     font-size: 16px;
+    font-weight: 700;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .vc-desktop-bounties-titleText span {
     overflow: hidden;
-    color: var(--text-muted);
+    color: var(--vc-db-text-muted) !important;
     font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.vc-desktop-bounties-completedPill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    flex: 0 0 auto;
-    padding: 4px 8px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--status-positive) 16%, transparent);
-    color: var(--status-positive);
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-}
-
-.vc-desktop-bounties-completedPill svg {
-    width: 14px;
-    height: 14px;
 }
 
 .vc-desktop-bounties-progressText {
@@ -415,16 +536,20 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    color: var(--text-muted);
+    color: var(--vc-db-text-muted);
     font-size: 12px;
 }
 
+.vc-desktop-bounties-progressText span {
+    color: inherit !important;
+}
+
 .vc-desktop-bounties-progressText strong {
-    color: var(--text-normal);
+    color: var(--vc-db-text-strong) !important;
 }
 
 .vc-desktop-bounties-successText {
-    color: var(--status-positive);
+    color: var(--vc-db-positive) !important;
     font-weight: 600;
 }
 
@@ -432,18 +557,18 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     height: 8px;
     overflow: hidden;
     border-radius: 999px;
-    background: var(--background-tertiary);
+    background: var(--vc-db-surface-raised);
 }
 
 .vc-desktop-bounties-progress > div {
     height: 100%;
     border-radius: inherit;
-    background: var(--brand-500);
+    background: var(--vc-db-brand);
     transition: width 220ms linear;
 }
 
 .vc-desktop-bounties-progress--completed > div {
-    background: var(--status-positive);
+    background: var(--vc-db-positive);
 }
 
 .vc-desktop-bounties-claimError {
@@ -451,15 +576,19 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     flex-direction: column;
     gap: 3px;
     padding: 10px 12px;
-    border: 1px solid color-mix(in srgb, var(--status-danger) 36%, transparent);
+    border: 1px solid color-mix(in srgb, var(--vc-db-danger) 36%, var(--vc-db-border));
     border-radius: 8px;
-    background: color-mix(in srgb, var(--status-danger) 10%, transparent);
-    color: var(--text-normal);
+    background: color-mix(in srgb, var(--vc-db-danger) 10%, var(--vc-db-surface));
+    color: var(--vc-db-text);
     font-size: 12px;
 }
 
 .vc-desktop-bounties-claimError strong {
-    color: var(--status-danger);
+    color: var(--vc-db-danger) !important;
+}
+
+.vc-desktop-bounties-claimError span {
+    color: var(--vc-db-text) !important;
 }
 
 .vc-desktop-bounties-cardFooter {
@@ -471,7 +600,7 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 }
 
 .vc-desktop-bounties-requirement {
-    color: var(--text-muted);
+    color: var(--vc-db-text-muted) !important;
     font-size: 11px;
 }
 
@@ -481,71 +610,66 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     gap: 8px;
 }
 
-.vc-desktop-bounties-state,
 .vc-desktop-bounties-emptyState {
-    padding: 40px 28px;
-    border: 1px solid var(--border-subtle);
-    border-radius: 14px;
-    background: var(--background-secondary);
-}
-
-.vc-desktop-bounties-state {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.vc-desktop-bounties-error strong {
-    color: var(--status-danger);
-}
-
-.vc-desktop-bounties-error span,
-.vc-desktop-bounties-emptyState p {
-    color: var(--text-muted);
-}
-
-.vc-desktop-bounties-emptyState {
+    min-height: 92px;
     display: flex;
     align-items: center;
-    flex-direction: column;
-    text-align: center;
+    gap: 14px;
+    padding: 18px;
+    border: 1px dashed var(--vc-db-border-strong);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--vc-db-surface) 80%, transparent);
+    color: var(--vc-db-text);
 }
 
 .vc-desktop-bounties-emptyState--compact {
-    padding: 32px;
+    padding: 18px 20px;
 }
 
-.vc-desktop-bounties-emptyState h2 {
-    margin: 10px 0 0;
-    color: var(--header-primary);
-    font-size: 18px;
+.vc-desktop-bounties-emptyState h3 {
+    margin: 0;
+    color: var(--vc-db-text-strong) !important;
+    font-size: 15px;
+    font-weight: 700;
 }
 
 .vc-desktop-bounties-emptyState p {
-    max-width: 520px;
-    margin: 7px 0 0;
+    max-width: 720px;
+    margin: 4px 0 0;
+    color: var(--vc-db-text-muted) !important;
     font-size: 13px;
     line-height: 1.45;
 }
 
 .vc-desktop-bounties-emptyIcon {
-    width: 54px;
-    height: 54px;
+    width: 42px;
+    height: 42px;
     display: grid;
     place-items: center;
+    flex: 0 0 auto;
     border-radius: 50%;
-    background: var(--background-tertiary);
-    color: var(--text-muted);
+    background: var(--vc-db-surface-raised);
+    color: var(--vc-db-text-muted);
 }
 
 .vc-desktop-bounties-emptyIcon svg {
-    width: 30px;
-    height: 30px;
+    width: 24px;
+    height: 24px;
+}
+
+.vc-desktop-bounties-emptyCheck {
+    width: 42px;
+    height: 42px;
+}
+
+.vc-desktop-bounties-emptyCheck svg {
+    width: 24px;
+    height: 24px;
 }
 
 .vc-desktop-bounties-skeletonCard {
     min-height: 320px;
-    background: linear-gradient(90deg, var(--background-secondary) 25%, var(--background-mod-subtle) 50%, var(--background-secondary) 75%);
+    background: linear-gradient(90deg, var(--vc-db-surface) 25%, var(--vc-db-surface-raised) 50%, var(--vc-db-surface) 75%);
     background-size: 200% 100%;
     animation: vc-desktop-bounties-shimmer 1.4s infinite linear;
 }
@@ -556,13 +680,16 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 }
 
 .vc-desktop-bounties-debug {
-    margin-top: 20px;
-    color: var(--text-muted);
+    margin-top: 28px;
+    padding-top: 14px;
+    border-top: 1px solid var(--vc-db-border);
+    color: var(--vc-db-text-muted);
     font-size: 11px;
 }
 
 .vc-desktop-bounties-debug summary {
     width: max-content;
+    color: var(--vc-db-text-muted) !important;
     cursor: pointer;
     user-select: none;
 }
@@ -572,6 +699,10 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     flex-wrap: wrap;
     gap: 8px 14px;
     margin-top: 8px;
+}
+
+.vc-desktop-bounties-debug span {
+    color: var(--vc-db-text-muted) !important;
 }
 
 @media (max-width: 900px) {
@@ -585,19 +716,40 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 700px) {
     .vc-desktop-bounties-pageHeader,
-    .vc-desktop-bounties-toolbar,
     .vc-desktop-bounties-cardFooter {
         align-items: stretch;
         flex-direction: column;
     }
 
-    .vc-desktop-bounties-orbPill {
-        align-self: flex-start;
+    .vc-desktop-bounties-headerActions {
+        justify-content: flex-start;
     }
 
-    .vc-desktop-bounties-tabs {
-        overflow-x: auto;
+    .vc-desktop-bounties-headingGroup {
+        align-items: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .vc-desktop-bounties-pageInner {
+        width: calc(100% - 20px);
+        padding-top: 18px;
+    }
+
+    .vc-desktop-bounties-pageHeader {
+        padding: 18px;
+    }
+
+    .vc-desktop-bounties-headingIcon {
+        width: 42px;
+        height: 42px;
+    }
+
+    .vc-desktop-bounties-headerActions,
+    .vc-desktop-bounties-actions {
+        width: 100%;
+        flex-wrap: wrap;
     }
 }
