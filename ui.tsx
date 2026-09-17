@@ -2,6 +2,7 @@
  * DesktopBounties UI
  */
 
+import { filters, mapMangledModuleLazy } from "@webpack";
 import { NavigationRouter, React } from "@webpack/common";
 
 import {
@@ -9,6 +10,7 @@ import {
     claimBounty,
     fetchBounties,
     fetchOrbBalance,
+    fetchVideoQuestHistory,
     getAdSessionId,
     getBountyContent,
     getCreativeType,
@@ -24,10 +26,22 @@ import {
     rememberClaimed,
     safeExternalUrl,
     saveProgress,
-    snapshotToDecision
+    snapshotToDecision,
+    VideoQuestHistoryItem
 } from "./core";
 
 type ClaimState = "idle" | "claiming" | "claimed" | "error";
+type VideoMode = "full-hls" | "full-file" | "preview" | "unavailable";
+
+// Discord already ships hls.js for Quest videos. Reuse its lazy loader instead of
+// treating the short video_preview asset as the full Bounty video.
+const HlsRuntime = mapMangledModuleLazy("ManagedMediaSource", {
+    loadHls: filters.byCode(".then(", ".default"),
+    canUseHls: filters.byCode("isTypeSupported")
+}) as {
+    loadHls: () => Promise<any>;
+    canUseHls: () => boolean;
+};
 
 function BountyIcon({ className = "" }: { className?: string; }) {
     return (
@@ -40,6 +54,14 @@ function BountyIcon({ className = "" }: { className?: string; }) {
                 strokeWidth="2"
                 strokeLinecap="round"
             />
+        </svg>
+    );
+}
+
+function PlayIcon() {
+    return (
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path fill="currentColor" d="M8.5 5.9a1 1 0 0 1 1.53-.85l9 6.1a1 1 0 0 1 0 1.7l-9 6.1a1 1 0 0 1-1.53-.85V5.9Z" />
         </svg>
     );
 }
@@ -61,7 +83,7 @@ function CheckIcon() {
     );
 }
 
-function formatClaimedAt(value?: number): string | null {
+function formatDate(value?: number): string | null {
     if (!value || !Number.isFinite(value)) return null;
 
     try {
@@ -75,8 +97,126 @@ function formatClaimedAt(value?: number): string | null {
     }
 }
 
+function FullVideoPlayer({
+    hlsUrl,
+    fileUrl,
+    poster,
+    fileIsPreview = false,
+    onModeChange,
+    onPlay,
+    onPause,
+    onEnded
+}: {
+    hlsUrl?: string;
+    fileUrl?: string;
+    poster?: string;
+    fileIsPreview?: boolean;
+    onModeChange?: (mode: VideoMode) => void;
+    onPlay?: () => void;
+    onPause?: () => void;
+    onEnded?: () => void;
+}) {
+    const videoRef = React.useRef<HTMLVideoElement>(null);
+    const [forceFile, setForceFile] = React.useState(!hlsUrl);
+
+    React.useEffect(() => {
+        setForceFile(!hlsUrl);
+    }, [hlsUrl]);
+
+    React.useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        let cancelled = false;
+        let hls: any = null;
+
+        const clearVideo = () => {
+            video.pause();
+            video.removeAttribute("src");
+            try { video.load(); } catch { }
+        };
+
+        clearVideo();
+
+        if (forceFile || !hlsUrl) {
+            if (fileUrl) {
+                video.src = fileUrl;
+                onModeChange?.(fileIsPreview ? "preview" : "full-file");
+            } else {
+                onModeChange?.("unavailable");
+            }
+
+            return () => clearVideo();
+        }
+
+        const nativeHls = video.canPlayType("application/vnd.apple.mpegurl")
+            || video.canPlayType("application/x-mpegURL");
+
+        if (nativeHls) {
+            video.src = hlsUrl;
+            onModeChange?.("full-hls");
+            return () => clearVideo();
+        }
+
+        void (async () => {
+            try {
+                const Hls = await HlsRuntime.loadHls();
+                if (cancelled || !videoRef.current) return;
+
+                if (!Hls?.isSupported?.()) {
+                    setForceFile(true);
+                    return;
+                }
+
+                hls = new Hls({
+                    startLevel: -1,
+                    startFragPrefetch: true,
+                    backBufferLength: 90,
+                    maxBufferLength: 60
+                });
+
+                hls.loadSource(hlsUrl);
+                hls.attachMedia(video);
+                onModeChange?.("full-hls");
+
+                if (Hls.Events?.ERROR) {
+                    hls.on(Hls.Events.ERROR, (_event: unknown, data: any) => {
+                        if (!data?.fatal || cancelled) return;
+                        try { hls?.destroy?.(); } catch { }
+                        hls = null;
+                        setForceFile(true);
+                    });
+                }
+            } catch (error) {
+                console.warn("[DesktopBounties] Could not initialize Discord's HLS runtime", error);
+                if (!cancelled) setForceFile(true);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+            try { hls?.destroy?.(); } catch { }
+            clearVideo();
+        };
+    }, [hlsUrl, fileUrl, fileIsPreview, forceFile, onModeChange]);
+
+    return (
+        <video
+            ref={videoRef}
+            poster={poster}
+            playsInline
+            controls
+            preload="metadata"
+            onPlay={onPlay}
+            onPause={onPause}
+            onEnded={onEnded}
+        />
+    );
+}
+
 export function BountiesNavItem() {
     const [active, setActive] = React.useState(isBountiesRoute);
+    const shellRef = React.useRef<HTMLLIElement>(null);
 
     React.useEffect(() => {
         const interval = window.setInterval(() => {
@@ -84,13 +224,24 @@ export function BountiesNavItem() {
                 const next = isBountiesRoute();
                 return current === next ? current : next;
             });
-        }, 250);
+        }, 200);
 
         return () => window.clearInterval(interval);
     }, []);
 
+    React.useEffect(() => {
+        const nativeQuestRow = shellRef.current?.previousElementSibling as HTMLElement | null;
+        document.body.classList.toggle("vc-desktop-bounties-route-active", active);
+        nativeQuestRow?.classList.toggle("vc-desktop-bounties-nativeQuestRow", active);
+
+        return () => {
+            nativeQuestRow?.classList.remove("vc-desktop-bounties-nativeQuestRow");
+            if (active) document.body.classList.remove("vc-desktop-bounties-route-active");
+        };
+    }, [active]);
+
     return (
-        <li className="vc-desktop-bounties-navShell" data-vc-desktop-bounties-nav="true">
+        <li ref={shellRef} className="vc-desktop-bounties-navShell" data-vc-desktop-bounties-nav="true">
             <button
                 type="button"
                 className={`vc-desktop-bounties-navButton${active ? " vc-desktop-bounties-navButton--active" : ""}`}
@@ -122,7 +273,8 @@ function BountyCard({
     if (!content) return null;
 
     const image = mediaUrl(content.image_preview ?? content.product_icon);
-    const video = mediaUrl(content.video_preview ?? content.video_hls);
+    const fullHls = mediaUrl(content.video_hls);
+    const preview = mediaUrl(content.video_preview);
     const icon = mediaUrl(content.product_icon);
     const ctaUrl = safeExternalUrl(content.cta?.url);
     const targetSeconds = Math.max(1, content.reward_timer_seconds ?? 15);
@@ -134,8 +286,8 @@ function BountyCard({
         isLocallyClaimed(content.id) ? "claimed" : "idle"
     );
     const [claimError, setClaimError] = React.useState<string | null>(null);
-    const [videoFailed, setVideoFailed] = React.useState(false);
     const [isPlaying, setIsPlaying] = React.useState(false);
+    const [videoMode, setVideoMode] = React.useState<VideoMode>(fullHls ? "full-hls" : preview ? "preview" : "unavailable");
 
     const isPlayingRef = React.useRef(false);
     const lastTickRef = React.useRef<number | null>(null);
@@ -143,10 +295,11 @@ function BountyCard({
     const wholeSeconds = Math.floor(watchedSeconds);
     const completed = claimState === "claimed";
     const started = wholeSeconds > 0 && !completed;
+    const hasFullVideo = videoMode === "full-hls" || videoMode === "full-file";
     const progressPercent = completed
         ? 100
         : Math.min(100, Math.round((watchedSeconds / targetSeconds) * 100));
-    const claimedDate = formatClaimedAt(claimedAt);
+    const claimedDate = formatDate(claimedAt);
 
     const doClaim = React.useCallback(async () => {
         if (claimState === "claiming" || claimState === "claimed") return;
@@ -180,8 +333,11 @@ function BountyCard({
         const interval = window.setInterval(() => {
             const now = performance.now();
 
+            // Never advance reward progress from the short preview asset. The
+            // server timer is only driven while the actual full Bounty video plays.
             if (
-                !isPlayingRef.current
+                !hasFullVideo
+                || !isPlayingRef.current
                 || document.visibilityState !== "visible"
                 || !document.hasFocus()
                 || claimState === "claimed"
@@ -201,18 +357,19 @@ function BountyCard({
         }, 250);
 
         return () => window.clearInterval(interval);
-    }, [targetSeconds, claimState]);
+    }, [targetSeconds, claimState, hasFullVideo]);
 
     React.useEffect(() => {
-        if (watchedSeconds >= targetSeconds && claimState === "idle") {
+        if (watchedSeconds >= targetSeconds && claimState === "idle" && hasFullVideo) {
             void doClaim();
         }
-    }, [watchedSeconds, targetSeconds, claimState, doClaim]);
+    }, [watchedSeconds, targetSeconds, claimState, doClaim, hasFullVideo]);
 
     const statusText = (() => {
         if (claimState === "claimed") return claimedDate ? `Completed ${claimedDate}` : "Completed and claimed on Discord";
         if (claimState === "claiming") return "Watch complete — claiming reward…";
         if (claimState === "error") return "Watch complete — claim needs retry";
+        if (!hasFullVideo) return "Full video unavailable in this client build";
         if (watchedSeconds >= targetSeconds) return "Watch complete — ready to claim";
         if (isPlaying) return `${wholeSeconds}s of ${targetSeconds}s watched`;
         if (wholeSeconds > 0) return `${wholeSeconds}s of ${targetSeconds}s — resume video`;
@@ -222,15 +379,11 @@ function BountyCard({
     return (
         <article className={`vc-desktop-bounties-card${completed ? " vc-desktop-bounties-card--completed" : ""}`}>
             <div className="vc-desktop-bounties-media">
-                {video && !videoFailed && !completed ? (
-                    <video
-                        src={video}
+                {fullHls ? (
+                    <FullVideoPlayer
+                        hlsUrl={fullHls}
                         poster={image}
-                        muted
-                        loop
-                        playsInline
-                        controls
-                        preload="metadata"
+                        onModeChange={setVideoMode}
                         onPlay={() => {
                             isPlayingRef.current = true;
                             setIsPlaying(true);
@@ -246,11 +399,13 @@ function BountyCard({
                             setIsPlaying(false);
                             lastTickRef.current = null;
                         }}
-                        onError={() => {
-                            isPlayingRef.current = false;
-                            setIsPlaying(false);
-                            setVideoFailed(true);
-                        }}
+                    />
+                ) : preview ? (
+                    <FullVideoPlayer
+                        fileUrl={preview}
+                        fileIsPreview
+                        poster={image}
+                        onModeChange={setVideoMode}
                     />
                 ) : image ? (
                     <img src={image} alt="" />
@@ -265,11 +420,8 @@ function BountyCard({
                     {completed ? "Completed" : started ? "In progress" : "Available"}
                 </span>
 
-                {completed && (
-                    <div className="vc-desktop-bounties-completedOverlay">
-                        <span className="vc-desktop-bounties-completedCheck"><CheckIcon /></span>
-                        <span>Completed</span>
-                    </div>
+                {!completed && videoMode === "preview" && (
+                    <span className="vc-desktop-bounties-videoNotice">Preview only</span>
                 )}
             </div>
 
@@ -309,7 +461,7 @@ function BountyCard({
 
                 <div className="vc-desktop-bounties-cardFooter">
                     <span className="vc-desktop-bounties-requirement">
-                        {completed ? "Reward claimed" : `${targetSeconds}s watch requirement`}
+                        {completed ? "Reward claimed" : hasFullVideo ? `${targetSeconds}s watch requirement` : "Full HLS video required"}
                     </span>
 
                     <div className="vc-desktop-bounties-actions">
@@ -331,6 +483,58 @@ function BountyCard({
                         </button>
                     </div>
                 </div>
+            </div>
+        </article>
+    );
+}
+
+function VideoQuestCard({ item }: { item: VideoQuestHistoryItem; }) {
+    const claimedDate = formatDate(item.claimedAt);
+    const playable = Boolean(item.videoHls || item.videoUrl);
+    const [mode, setMode] = React.useState<VideoMode>(item.videoHls ? "full-hls" : item.videoUrl ? "full-file" : "unavailable");
+
+    return (
+        <article className="vc-desktop-bounties-card vc-desktop-bounties-card--history">
+            <div className="vc-desktop-bounties-media">
+                {playable ? (
+                    <FullVideoPlayer
+                        hlsUrl={item.videoHls}
+                        fileUrl={item.videoUrl}
+                        poster={item.thumbnail}
+                        onModeChange={setMode}
+                    />
+                ) : item.thumbnail ? (
+                    <img src={item.thumbnail} alt="" />
+                ) : (
+                    <div className="vc-desktop-bounties-mediaFallback vc-desktop-bounties-mediaFallback--archive">
+                        <PlayIcon />
+                        <span>Archived Quest</span>
+                    </div>
+                )}
+
+                <span className="vc-desktop-bounties-statusPill vc-desktop-bounties-statusPill--completed">
+                    <CheckIcon />
+                    Claimed
+                </span>
+            </div>
+
+            <div className="vc-desktop-bounties-body">
+                <div className="vc-desktop-bounties-titleText">
+                    <strong>{item.title}</strong>
+                    <span>{[item.gameTitle, item.publisher].filter(Boolean).join(" · ") || "Discord Video Quest"}</span>
+                </div>
+
+                <div className="vc-desktop-bounties-historyMeta">
+                    <span>{claimedDate ? `Claimed ${claimedDate}` : "Claimed Quest"}</span>
+                    {item.targetSeconds != null && <span>{item.targetSeconds}s requirement</span>}
+                    {playable && <span>{mode === "full-hls" ? "Full HLS video" : "Full video"}</span>}
+                </div>
+
+                {!playable && (
+                    <p className="vc-desktop-bounties-archiveNote">
+                        Discord still returns this Quest in your claimed history, but no longer exposes its full video task asset.
+                    </p>
+                )}
             </div>
         </article>
     );
@@ -367,6 +571,8 @@ function BountiesPage() {
     const [error, setError] = React.useState<string | null>(null);
     const [orbBalance, setOrbBalance] = React.useState<number | null>(null);
     const [orbLoading, setOrbLoading] = React.useState(true);
+    const [videoHistory, setVideoHistory] = React.useState<VideoQuestHistoryItem[]>([]);
+    const [videoHistoryLoading, setVideoHistoryLoading] = React.useState(true);
     const [localVersion, setLocalVersion] = React.useState(0);
 
     const loadOrbBalance = React.useCallback(async () => {
@@ -383,17 +589,29 @@ function BountiesPage() {
 
     const load = React.useCallback(async () => {
         setLoading(true);
+        setVideoHistoryLoading(true);
         setError(null);
 
-        try {
-            setResult(await fetchBounties());
-        } catch (err) {
-            console.error("[DesktopBounties] Failed to fetch mobile Bounties", err);
-            setError(getErrorMessage(err));
-        } finally {
-            setLoading(false);
+        const [bountyResult, historyResult] = await Promise.allSettled([
+            fetchBounties(),
+            fetchVideoQuestHistory()
+        ]);
+
+        if (bountyResult.status === "fulfilled") {
+            setResult(bountyResult.value);
+        } else {
+            console.error("[DesktopBounties] Failed to fetch mobile Bounties", bountyResult.reason);
+            setError(getErrorMessage(bountyResult.reason));
         }
 
+        if (historyResult.status === "fulfilled") {
+            setVideoHistory(historyResult.value);
+        } else {
+            console.warn("[DesktopBounties] Failed to fetch claimed video Quest history", historyResult.reason);
+        }
+
+        setLoading(false);
+        setVideoHistoryLoading(false);
         void loadOrbBalance();
     }, [loadOrbBalance]);
 
@@ -485,11 +703,10 @@ function BountiesPage() {
                     <div className="vc-desktop-bounties-headingGroup">
                         <div className="vc-desktop-bounties-headingIcon"><BountyIcon /></div>
                         <div className="vc-desktop-bounties-headingText">
-                            <div className="vc-desktop-bounties-eyebrow">QUESTS</div>
                             <h1>Bounties</h1>
-                            <p>Watch eligible sponsored videos and claim the reward directly with Discord.</p>
+                            <p>Sponsored videos available to your Discord account.</p>
                             <div className="vc-desktop-bounties-summaryLine">
-                                <span><strong>{classified.todo.length}</strong> to do</span>
+                                <span><strong>{classified.todo.length}</strong> available</span>
                                 <span><strong>{inProgressCount}</strong> in progress</span>
                                 <span><strong>{classified.completed.length}</strong> completed</span>
                             </div>
@@ -500,10 +717,10 @@ function BountiesPage() {
                         <button
                             type="button"
                             className="vc-desktop-bounties-refreshButton"
-                            disabled={loading}
+                            disabled={loading || videoHistoryLoading}
                             onClick={() => void load()}
                         >
-                            {loading ? "Refreshing…" : "Refresh"}
+                            {loading || videoHistoryLoading ? "Refreshing…" : "Refresh"}
                         </button>
 
                         <button
@@ -528,8 +745,8 @@ function BountiesPage() {
 
                 <section className="vc-desktop-bounties-section">
                     <SectionHeader
-                        title="To do"
-                        description="Available Bounties are shown here. Bounties you start watching stay at the top."
+                        title="Available Bounties"
+                        description="Bounties you can still complete. Started videos stay first."
                         count={classified.todo.length}
                     />
 
@@ -556,11 +773,11 @@ function BountiesPage() {
                             })}
                         </div>
                     ) : !error && (
-                        <div className="vc-desktop-bounties-emptyState vc-desktop-bounties-emptyState--compact">
+                        <div className="vc-desktop-bounties-emptyState">
                             <div className="vc-desktop-bounties-emptyIcon"><BountyIcon /></div>
                             <div>
-                                <h3>No Bounties to do</h3>
-                                <p>Discord did not return any available Bounty creatives for this account right now.</p>
+                                <h3>No Bounties available</h3>
+                                <p>Discord did not return a current Bounty for this account.</p>
                             </div>
                         </div>
                     )}
@@ -568,8 +785,8 @@ function BountiesPage() {
 
                 <section className="vc-desktop-bounties-section vc-desktop-bounties-section--completed">
                     <SectionHeader
-                        title="Completed"
-                        description="Every Bounty successfully claimed by this plugin stays in this history."
+                        title="Completed Bounties"
+                        description="Bounties for which Discord accepted the creative reward claim."
                         count={classified.completed.length}
                         completed
                     />
@@ -591,11 +808,35 @@ function BountiesPage() {
                             })}
                         </div>
                     ) : (
-                        <div className="vc-desktop-bounties-emptyState vc-desktop-bounties-emptyState--compact">
+                        <div className="vc-desktop-bounties-emptyState">
                             <span className="vc-desktop-bounties-emptyCheck"><CheckIcon /></span>
                             <div>
                                 <h3>No completed Bounties yet</h3>
-                                <p>After Discord accepts a reward claim, the Bounty will be kept here.</p>
+                                <p>Once Discord accepts a Bounty claim, it will stay in this history.</p>
+                            </div>
+                        </div>
+                    )}
+                </section>
+
+                <section className="vc-desktop-bounties-section vc-desktop-bounties-section--history">
+                    <SectionHeader
+                        title="Video Quest history"
+                        description="Claimed Discord video Quests that can still be recovered, plus full videos cached by this plugin."
+                        count={videoHistory.length}
+                    />
+
+                    {videoHistoryLoading ? (
+                        <div className="vc-desktop-bounties-historyLoading">Loading claimed video Quests…</div>
+                    ) : videoHistory.length > 0 ? (
+                        <div className="vc-desktop-bounties-grid">
+                            {videoHistory.map(item => <VideoQuestCard key={item.id} item={item} />)}
+                        </div>
+                    ) : (
+                        <div className="vc-desktop-bounties-emptyState">
+                            <span className="vc-desktop-bounties-emptyPlay"><PlayIcon /></span>
+                            <div>
+                                <h3>No recoverable video Quest history</h3>
+                                <p>Discord's claimed-Quest endpoint does not retain the full video asset for every expired Quest. Any full video this plugin can recover is cached here for later.</p>
                             </div>
                         </div>
                     )}
@@ -608,6 +849,7 @@ function BountiesPage() {
                             <span>Decisions: {result.decisions.length}</span>
                             <span>Live Bounties: {result.bounties.length}</span>
                             <span>Saved completed: {classified.completed.length}</span>
+                            <span>Video Quest history: {videoHistory.length}</span>
                             {creativeTypes && <span>Creative types: {creativeTypes}</span>}
                             {result.requestId && <span>Request: {result.requestId}</span>}
                         </div>
