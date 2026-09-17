@@ -1,4 +1,5 @@
 .vc-desktop-bounties-navShell {
+    height: 40px;
     list-style: none;
     margin: 0;
     padding: 0;
@@ -6,8 +7,8 @@
 
 .vc-desktop-bounties-navButton {
     width: calc(100% - 16px);
-    height: 42px;
-    margin: 1px 8px;
+    height: 40px;
+    margin: 0 8px;
     padding: 0 8px;
     display: flex;
     align-items: center;
