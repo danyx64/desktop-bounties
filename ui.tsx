@@ -7,6 +7,7 @@ import { NavigationRouter, React } from "@webpack/common";
 
 import {
     AdDecision,
+    BOUNTIES_ROUTE,
     claimBounty,
     fetchBounties,
     fetchOrbBalance,
@@ -25,6 +26,90 @@ import {
 
 type ClaimState = "idle" | "claiming" | "error";
 
+interface NativeNavClasses {
+    wrapper: string;
+    channel: string;
+    interactive: string;
+    interactiveSelected: string;
+    link: string;
+    layout: string;
+    avatar: string;
+    icon: string;
+    content: string;
+    nameAndDecorators: string;
+    name: string;
+}
+
+// Fallbacks from Discord's current Home shortcut markup. At runtime these are
+// refreshed from the real Quests row, so hash changes do not normally matter.
+const FALLBACK_NAV_CLASSES: NativeNavClasses = {
+    wrapper: "wrapper__553bf",
+    channel: "channel__972a0 container_e45859",
+    interactive: "interactive_f88cfd interactive__972a0 linkButton__972a0",
+    interactiveSelected: "interactive_f88cfd interactive__972a0 linkButton__972a0 interactiveSelected__972a0 selected_f88cfd",
+    link: "link__972a0",
+    layout: "layout__20a53 avatarWithText__972a0",
+    avatar: "avatar__20a53",
+    icon: "linkButtonIcon__972a0",
+    content: "content__20a53",
+    nameAndDecorators: "nameAndDecorators__20a53",
+    name: "name__20a53 text-md/medium__20a53"
+};
+
+function topShortcutLink(name: "friends" | "nitro" | "shop" | "quests") {
+    return document.querySelector<HTMLAnchorElement>(
+        `a[data-list-item-id$="___${name}"]`
+    );
+}
+
+function readNativeNavClasses(): NativeNavClasses {
+    const questLink = topShortcutLink("quests");
+    if (!questLink) return FALLBACK_NAV_CLASSES;
+
+    const questInteractive = questLink.parentElement as HTMLElement | null;
+    const questLi = questInteractive?.parentElement as HTMLElement | null;
+    const questWrapper = questLi?.parentElement as HTMLElement | null;
+    const layout = questLink.firstElementChild as HTMLElement | null;
+    const avatar = layout?.firstElementChild as HTMLElement | null;
+    const icon = avatar?.querySelector<SVGElement>("svg") ?? null;
+    const content = layout?.children.item(1) as HTMLElement | null;
+    const nameAndDecorators = content?.firstElementChild as HTMLElement | null;
+    const name = nameAndDecorators?.firstElementChild as HTMLElement | null;
+
+    // Shop is normally unselected and uses the exact same row component.
+    const shopInteractive = topShortcutLink("shop")?.parentElement as HTMLElement | null;
+    const interactive = shopInteractive?.className || questInteractive?.className || FALLBACK_NAV_CLASSES.interactive;
+
+    // Capture Discord's real selected-state classes from one of the native top
+    // shortcuts. This makes Bounties look exactly like Friends/Shop/Quests when active.
+    const selectedInteractive = (["friends", "nitro", "shop", "quests"] as const)
+        .map(topShortcutLink)
+        .map(link => link?.parentElement as HTMLElement | null)
+        .find(element => {
+            const classes = element?.className;
+            return typeof classes === "string"
+                && (classes.includes("interactiveSelected") || /(^|\s)selected_/.test(classes));
+        });
+
+    return {
+        wrapper: questWrapper?.className || FALLBACK_NAV_CLASSES.wrapper,
+        channel: questLi?.className || FALLBACK_NAV_CLASSES.channel,
+        interactive,
+        interactiveSelected: selectedInteractive?.className || FALLBACK_NAV_CLASSES.interactiveSelected,
+        link: questLink.className || FALLBACK_NAV_CLASSES.link,
+        layout: layout?.className || FALLBACK_NAV_CLASSES.layout,
+        avatar: avatar?.className || FALLBACK_NAV_CLASSES.avatar,
+        icon: icon?.getAttribute("class") || FALLBACK_NAV_CLASSES.icon,
+        content: content?.className || FALLBACK_NAV_CLASSES.content,
+        nameAndDecorators: nameAndDecorators?.className || FALLBACK_NAV_CLASSES.nameAndDecorators,
+        name: name?.className || FALLBACK_NAV_CLASSES.name
+    };
+}
+
+function sameNativeNavClasses(a: NativeNavClasses, b: NativeNavClasses) {
+    return Object.keys(a).every(key => a[key as keyof NativeNavClasses] === b[key as keyof NativeNavClasses]);
+}
+
 // Discord already ships hls.js for Quest videos. We reuse it so video_hls is
 // rendered as the complete Bounty video instead of showing video_preview.
 const HlsRuntime = mapMangledModuleLazy("ManagedMediaSource", {
@@ -37,7 +122,7 @@ const HlsRuntime = mapMangledModuleLazy("ManagedMediaSource", {
 
 function BountyIcon({ className = "" }: { className?: string; }) {
     return (
-        <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none">
+        <svg className={className} aria-hidden="true" role="img" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="6.25" stroke="currentColor" strokeWidth="2" />
             <circle cx="12" cy="12" r="2.25" fill="currentColor" />
             <path
@@ -158,84 +243,62 @@ function FullBountyVideo({
 
 export function BountiesNavItem() {
     const [active, setActive] = React.useState(isBountiesRoute);
-    const shellRef = React.useRef<HTMLLIElement>(null);
-    const buttonRef = React.useRef<HTMLButtonElement>(null);
+    const [nativeClasses, setNativeClasses] = React.useState<NativeNavClasses>(FALLBACK_NAV_CLASSES);
 
     React.useEffect(() => {
-        const interval = window.setInterval(() => {
-            setActive(current => {
-                const next = isBountiesRoute();
-                return current === next ? current : next;
-            });
-        }, 200);
+        const sync = () => {
+            const nextActive = isBountiesRoute();
+            setActive(current => current === nextActive ? current : nextActive);
 
+            const nextClasses = readNativeNavClasses();
+            setNativeClasses(current => sameNativeNavClasses(current, nextClasses) ? current : nextClasses);
+
+            // /quest-home is the underlying native route, so Discord may mark its
+            // Quests shortcut selected. Move that visual state to Bounties without
+            // changing any route, account or authentication state.
+            if (nextActive) {
+                const questInteractive = topShortcutLink("quests")?.parentElement as HTMLElement | null;
+                if (questInteractive && questInteractive.className !== nextClasses.interactive) {
+                    questInteractive.className = nextClasses.interactive;
+                    questInteractive.removeAttribute("aria-current");
+                }
+            }
+        };
+
+        sync();
+        const interval = window.setInterval(sync, 400);
         return () => window.clearInterval(interval);
     }, []);
 
-    React.useEffect(() => {
-        const shell = shellRef.current;
-        const button = buttonRef.current;
-        if (!shell || !button) return;
-
-        const syncWithNativeQuestRow = () => {
-            const nativeRow = shell.previousElementSibling as HTMLElement | null;
-            if (!nativeRow) return;
-
-            const nativeClickable = nativeRow.querySelector<HTMLElement>(
-                "a, button, [role='link'], [role='button']"
-            ) ?? nativeRow.firstElementChild as HTMLElement | null;
-
-            // Reuse Discord's generated classes when available. This keeps the
-            // row height, width, spacing and corner radius identical to Quests.
-            if (typeof nativeRow.className === "string" && nativeRow.className) {
-                shell.className = `${nativeRow.className} vc-desktop-bounties-navShell`;
-            }
-
-            if (nativeClickable && typeof nativeClickable.className === "string" && nativeClickable.className) {
-                button.className = `${nativeClickable.className} vc-desktop-bounties-navButton${active ? " vc-desktop-bounties-navButton--active" : ""}`;
-
-                // Fallback for builds where the generated class does not carry
-                // every layout value on the clickable node.
-                const style = getComputedStyle(nativeClickable);
-                button.style.height = style.height;
-                button.style.minHeight = style.minHeight;
-                button.style.padding = style.padding;
-                button.style.margin = style.margin;
-                button.style.borderRadius = style.borderRadius;
-                button.style.fontSize = style.fontSize;
-                button.style.fontWeight = style.fontWeight;
-                button.style.lineHeight = style.lineHeight;
-            }
-
-            nativeRow.classList.toggle("vc-desktop-bounties-nativeQuestRow", active);
-            document.body.classList.toggle("vc-desktop-bounties-route-active", active);
-        };
-
-        syncWithNativeQuestRow();
-        const syncInterval = window.setInterval(syncWithNativeQuestRow, 500);
-
-        return () => {
-            window.clearInterval(syncInterval);
-            const nativeRow = shell.previousElementSibling as HTMLElement | null;
-            nativeRow?.classList.remove("vc-desktop-bounties-nativeQuestRow");
-            document.body.classList.remove("vc-desktop-bounties-route-active");
-        };
-    }, [active]);
-
     return (
-        <li ref={shellRef} className="vc-desktop-bounties-navShell" data-vc-desktop-bounties-nav="true">
-            <button
-                ref={buttonRef}
-                type="button"
-                className={`vc-desktop-bounties-navButton${active ? " vc-desktop-bounties-navButton--active" : ""}`}
-                aria-label="Bounties"
-                aria-current={active ? "page" : undefined}
-                onClick={openBountiesPage}
-            >
-                <BountyIcon className="vc-desktop-bounties-navIcon" />
-                <span className="vc-desktop-bounties-navLabel">Bounties</span>
-            </button>
-        </li>
+        <div className={`${nativeClasses.wrapper} vc-desktop-bounties-navShell`} data-vc-desktop-bounties-nav="true">
+            <li className={nativeClasses.channel} role="listitem">
+                <div className={active ? nativeClasses.interactiveSelected : nativeClasses.interactive}>
+                    <a
+                        className={`${nativeClasses.link} vc-desktop-bounties-navLink`}
+                        data-list-item-id="private-channels-uid_11___bounties"
+                        tabIndex={-1}
+                        href={BOUNTIES_ROUTE}
+                        aria-current={active ? "page" : undefined}
+                        onClick={event => {
+                            event.preventDefault();
+                            openBountiesPage();
+                        }}
+                    >
+                        <div className={nativeClasses.layout}>
+                            <div className={nativeClasses.avatar}>
+                                <BountyIcon className={nativeClasses.icon} />
+                            </div>
+                            <div className={nativeClasses.content}>
+                                <div className={nativeClasses.nameAndDecorators}>
+                                    <div className={nativeClasses.name}>Bounties</div>
+                                </div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </li>
+        </div>
     );
 }
 
