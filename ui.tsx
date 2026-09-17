@@ -40,8 +40,6 @@ interface NativeNavClasses {
     name: string;
 }
 
-// Fallbacks from Discord's current Home shortcut markup. At runtime these are
-// refreshed from the real Quests row, so hash changes do not normally matter.
 const FALLBACK_NAV_CLASSES: NativeNavClasses = {
     wrapper: "wrapper__553bf",
     channel: "channel__972a0 container_e45859",
@@ -57,9 +55,7 @@ const FALLBACK_NAV_CLASSES: NativeNavClasses = {
 };
 
 function topShortcutLink(name: "friends" | "nitro" | "shop" | "quests") {
-    return document.querySelector<HTMLAnchorElement>(
-        `a[data-list-item-id$="___${name}"]`
-    );
+    return document.querySelector<HTMLAnchorElement>(`a[data-list-item-id$="___${name}"]`);
 }
 
 function readNativeNavClasses(): NativeNavClasses {
@@ -76,12 +72,9 @@ function readNativeNavClasses(): NativeNavClasses {
     const nameAndDecorators = content?.firstElementChild as HTMLElement | null;
     const name = nameAndDecorators?.firstElementChild as HTMLElement | null;
 
-    // Shop is normally unselected and uses the exact same row component.
     const shopInteractive = topShortcutLink("shop")?.parentElement as HTMLElement | null;
     const interactive = shopInteractive?.className || questInteractive?.className || FALLBACK_NAV_CLASSES.interactive;
 
-    // Capture Discord's real selected-state classes from one of the native top
-    // shortcuts. This makes Bounties look exactly like Friends/Shop/Quests when active.
     const selectedInteractive = (["friends", "nitro", "shop", "quests"] as const)
         .map(topShortcutLink)
         .map(link => link?.parentElement as HTMLElement | null)
@@ -110,8 +103,6 @@ function sameNativeNavClasses(a: NativeNavClasses, b: NativeNavClasses) {
     return Object.keys(a).every(key => a[key as keyof NativeNavClasses] === b[key as keyof NativeNavClasses]);
 }
 
-// Discord already ships hls.js for Quest videos. We reuse it so video_hls is
-// rendered as the complete Bounty video instead of showing video_preview.
 const HlsRuntime = mapMangledModuleLazy("ManagedMediaSource", {
     loadHls: filters.byCode(".then(", ".default"),
     canUseHls: filters.byCode("isTypeSupported")
@@ -253,9 +244,6 @@ export function BountiesNavItem() {
             const nextClasses = readNativeNavClasses();
             setNativeClasses(current => sameNativeNavClasses(current, nextClasses) ? current : nextClasses);
 
-            // /quest-home is the underlying native route, so Discord may mark its
-            // Quests shortcut selected. Move that visual state to Bounties without
-            // changing any route, account or authentication state.
             if (nextActive) {
                 const questInteractive = topShortcutLink("quests")?.parentElement as HTMLElement | null;
                 if (questInteractive && questInteractive.className !== nextClasses.interactive) {
@@ -442,7 +430,7 @@ function BountyCard({
                     {icon && <img className="vc-desktop-bounties-icon" src={icon} alt="" />}
                     <div className="vc-desktop-bounties-titleText">
                         <strong>{content.product_name || content.advertiser_name || "Bounty"}</strong>
-                        {content.advertiser_name && content.product_name && <span>{content.advertiser_name}</span>}
+                        {content.advertiser_name && content.product_name && <span>Promoted by {content.advertiser_name}</span>}
                     </div>
                 </div>
 
@@ -463,7 +451,7 @@ function BountyCard({
 
                 {(!fullHls || !videoAvailable) && (
                     <div className="vc-desktop-bounties-infoBox">
-                        Discord returned this Bounty without a playable full <code>video_hls</code> stream. The short preview is intentionally not used.
+                        Discord did not provide a playable full HLS stream for this Bounty. The short preview is not used.
                     </div>
                 )}
 
@@ -475,7 +463,7 @@ function BountyCard({
                 )}
 
                 <div className="vc-desktop-bounties-cardFooter">
-                    <span className="vc-desktop-bounties-requirement">{targetSeconds}s watch requirement</span>
+                    <span className="vc-desktop-bounties-requirement">{targetSeconds}s required</span>
                     <div className="vc-desktop-bounties-actions">
                         {claimState === "error" && watchedSeconds >= targetSeconds && (
                             <button className="vc-desktop-bounties-primaryButton" onClick={() => void doClaim()}>
@@ -487,7 +475,7 @@ function BountyCard({
                             disabled={!ctaUrl}
                             onClick={() => openExternal(ctaUrl)}
                         >
-                            {content.cta?.button_label || "Advertiser"}
+                            {content.cta?.button_label || "View"}
                         </button>
                     </div>
                 </div>
@@ -547,82 +535,75 @@ function BountiesPage() {
 
     return (
         <div className="vc-desktop-bounties-page">
-            <div className="vc-desktop-bounties-pageInner">
-                <header className="vc-desktop-bounties-pageHeader">
-                    <div className="vc-desktop-bounties-headingGroup">
-                        <div className="vc-desktop-bounties-headingIcon"><BountyIcon /></div>
-                        <div className="vc-desktop-bounties-headingText">
-                            <h1>Bounties</h1>
-                            <p>Sponsored videos currently available for your Discord account.</p>
-                        </div>
-                    </div>
+            <div className="vc-desktop-bounties-toolbar">
+                <button
+                    type="button"
+                    className="vc-desktop-bounties-orbCounter"
+                    title="Open the Orbs shop"
+                    onClick={() => NavigationRouter.transitionTo("/shop?tab=orbs")}
+                >
+                    <OrbIcon />
+                    <strong>{orbLoading ? "…" : orbBalance != null ? orbBalance.toLocaleString() : "—"}</strong>
+                    <span>Orbs</span>
+                </button>
 
-                    <div className="vc-desktop-bounties-headerActions">
-                        <button
-                            type="button"
-                            className="vc-desktop-bounties-refreshButton"
-                            disabled={loading}
-                            onClick={() => void load()}
-                        >
-                            {loading ? "Refreshing…" : "Refresh"}
-                        </button>
-
-                        <button
-                            type="button"
-                            className="vc-desktop-bounties-orbPill"
-                            title="Open the Orbs shop"
-                            onClick={() => NavigationRouter.transitionTo("/shop?tab=orbs")}
-                        >
-                            <OrbIcon />
-                            <strong>{orbLoading ? "…" : orbBalance != null ? orbBalance.toLocaleString() : "—"}</strong>
-                            <span>Orbs</span>
-                        </button>
-                    </div>
-                </header>
-
-                <div className="vc-desktop-bounties-sectionHeader">
-                    <div>
-                        <div className="vc-desktop-bounties-sectionTitleRow">
-                            <h2>Available Bounties</h2>
-                            <span className="vc-desktop-bounties-sectionCount">{bounties.length}</span>
-                        </div>
-                        <p>Only Bounties still to complete are shown here. Videos use Discord's complete HLS stream.</p>
-                    </div>
-                </div>
-
-                {error && (
-                    <div className="vc-desktop-bounties-state vc-desktop-bounties-error">
-                        <strong>Could not load Bounties</strong>
-                        <span>{error}</span>
-                    </div>
-                )}
-
-                {loading && !result ? (
-                    <div className="vc-desktop-bounties-skeletonGrid">
-                        <div className="vc-desktop-bounties-skeletonCard" />
-                        <div className="vc-desktop-bounties-skeletonCard" />
-                    </div>
-                ) : bounties.length > 0 ? (
-                    <div className="vc-desktop-bounties-grid">
-                        {bounties.map((decision, index) => (
-                            <BountyCard
-                                key={getBountyContent(decision)?.id ?? index}
-                                decision={decision}
-                                clientAdSessionId={clientAdSessionId}
-                                onClaimed={handleClaimed}
-                            />
-                        ))}
-                    </div>
-                ) : !error && (
-                    <div className="vc-desktop-bounties-emptyState">
-                        <div className="vc-desktop-bounties-emptyIcon"><BountyIcon /></div>
-                        <div>
-                            <h3>No Bounties available</h3>
-                            <p>Discord is not currently serving any uncompleted Bounties to this account.</p>
-                        </div>
-                    </div>
-                )}
+                <button
+                    type="button"
+                    className="vc-desktop-bounties-refreshButton vc-desktop-bounties-toolbarRefresh"
+                    disabled={loading}
+                    onClick={() => void load()}
+                >
+                    {loading ? "Refreshing…" : "Refresh"}
+                </button>
             </div>
+
+            <main className="vc-desktop-bounties-pageInner">
+                <section className="vc-desktop-bounties-section">
+                    <div className="vc-desktop-bounties-sectionHeader">
+                        <div>
+                            <div className="vc-desktop-bounties-sectionTitleRow">
+                                <h1>Available Bounties</h1>
+                                <span className="vc-desktop-bounties-sectionCount">{bounties.length}</span>
+                            </div>
+                            <p>Sponsored videos still available to complete on your Discord account.</p>
+                        </div>
+                    </div>
+
+                    {error && (
+                        <div className="vc-desktop-bounties-state vc-desktop-bounties-error">
+                            <strong>Could not load Bounties</strong>
+                            <span>{error}</span>
+                        </div>
+                    )}
+
+                    {loading && !result ? (
+                        <div className="vc-desktop-bounties-skeletonGrid">
+                            <div className="vc-desktop-bounties-skeletonCard" />
+                            <div className="vc-desktop-bounties-skeletonCard" />
+                            <div className="vc-desktop-bounties-skeletonCard" />
+                        </div>
+                    ) : bounties.length > 0 ? (
+                        <div className="vc-desktop-bounties-grid">
+                            {bounties.map((decision, index) => (
+                                <BountyCard
+                                    key={getBountyContent(decision)?.id ?? index}
+                                    decision={decision}
+                                    clientAdSessionId={clientAdSessionId}
+                                    onClaimed={handleClaimed}
+                                />
+                            ))}
+                        </div>
+                    ) : !error && (
+                        <div className="vc-desktop-bounties-emptyState">
+                            <div className="vc-desktop-bounties-emptyIcon"><BountyIcon /></div>
+                            <div>
+                                <h3>No Bounties available</h3>
+                                <p>Discord is not currently serving any uncompleted Bounties to this account.</p>
+                            </div>
+                        </div>
+                    )}
+                </section>
+            </main>
         </div>
     );
 }
