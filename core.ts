@@ -118,7 +118,7 @@ export function saveProgress(id: string, seconds: number) {
     } catch { }
 }
 
-function readClaimedIds(): Set<string> {
+export function readClaimedIds(): Set<string> {
     try {
         const ids = JSON.parse(localStorage.getItem(CLAIMED_STORAGE_KEY) ?? "[]") as string[];
         return new Set(Array.isArray(ids) ? ids : []);
@@ -159,6 +159,20 @@ export function rememberClaimed(content: BountyCreativeContent) {
 export function snapshotToDecision(snapshot: ClaimedSnapshot): AdDecision {
     const { claimedAt: _claimedAt, ...content } = snapshot;
     return { creative: { type: BOUNTY_CREATIVE_TYPE, creative_type: BOUNTY_CREATIVE_TYPE, creative_content: content } };
+}
+
+export function claimedIdToDecision(id: string): AdDecision {
+    return {
+        creative: {
+            type: BOUNTY_CREATIVE_TYPE,
+            creative_type: BOUNTY_CREATIVE_TYPE,
+            creative_content: {
+                id,
+                product_name: "Completed Bounty",
+                advertiser_name: "Discord"
+            }
+        }
+    };
 }
 
 export function mediaUrl(asset?: string): string | undefined {
