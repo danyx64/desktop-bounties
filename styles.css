@@ -6,7 +6,7 @@
 
 .vc-desktop-bounties-navButton {
     width: 100%;
-    height: 40px;
+    height: 42px;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -15,7 +15,7 @@
     border-radius: 8px;
     outline: none;
     background: transparent;
-    color: var(--text-default, #dbdee1);
+    color: var(--interactive-normal, var(--text-muted, #b5bac1));
     font: inherit;
     font-size: 16px;
     font-weight: 500;
@@ -24,29 +24,19 @@
     transition: background-color 120ms ease, color 120ms ease;
 }
 
-.vc-desktop-bounties-navLabel {
-    color: inherit;
-}
-
 .vc-desktop-bounties-navButton:hover {
     background: var(--background-mod-subtle, rgb(255 255 255 / 6%));
-    color: var(--text-strong, #f2f3f5);
+    color: var(--interactive-hover, var(--text-default, #dbdee1));
 }
 
 .vc-desktop-bounties-navButton--active,
 .vc-desktop-bounties-navButton--active:hover {
     background: var(--background-mod-strong, rgb(255 255 255 / 12%));
-    color: var(--text-strong, #f2f3f5);
+    color: var(--interactive-active, var(--text-strong, #f2f3f5));
 }
 
 .vc-desktop-bounties-navButton:focus-visible {
     box-shadow: inset 0 0 0 2px var(--focus-primary, var(--brand-500, #5865f2));
-}
-
-/* When Bounties is selected, avoid leaving the native Quests row visually selected too. */
-li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [aria-current="page"] {
-    background: transparent !important;
-    color: var(--text-default, #dbdee1) !important;
 }
 
 .vc-desktop-bounties-navIcon {
@@ -56,17 +46,33 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     color: currentColor;
 }
 
+.vc-desktop-bounties-navLabel {
+    color: inherit;
+}
+
+/* /quest-home is reused for the page, so Discord thinks Quests is selected too.
+ * The component marks the native row immediately before Bounties; neutralize that
+ * row while the Bounties route is active instead of relying on Discord class names. */
+.vc-desktop-bounties-route-active .vc-desktop-bounties-nativeQuestRow,
+.vc-desktop-bounties-route-active .vc-desktop-bounties-nativeQuestRow > *,
+.vc-desktop-bounties-route-active .vc-desktop-bounties-nativeQuestRow [aria-current="page"],
+.vc-desktop-bounties-route-active .vc-desktop-bounties-nativeQuestRow [aria-selected="true"] {
+    background-color: transparent !important;
+    color: var(--interactive-normal, var(--text-muted, #b5bac1)) !important;
+}
+
 .vc-desktop-bounties-page {
     --vc-db-bg: var(--background-base-lowest, var(--background-primary, #111214));
     --vc-db-surface: var(--background-base-low, var(--background-secondary, #1e1f22));
-    --vc-db-surface-raised: var(--background-base-lower, var(--background-tertiary, #2b2d31));
-    --vc-db-surface-hover: var(--background-mod-subtle, rgb(255 255 255 / 6%));
-    --vc-db-surface-active: var(--background-mod-strong, rgb(255 255 255 / 12%));
+    --vc-db-surface-2: var(--background-base-lower, var(--background-tertiary, #2b2d31));
+    --vc-db-hover: var(--background-mod-subtle, rgb(255 255 255 / 6%));
+    --vc-db-active: var(--background-mod-strong, rgb(255 255 255 / 10%));
     --vc-db-text: var(--text-default, var(--text-normal, #dbdee1));
-    --vc-db-text-strong: var(--text-strong, var(--header-primary, #f2f3f5));
-    --vc-db-text-muted: var(--text-muted, #949ba4);
+    --vc-db-strong: var(--text-strong, #f2f3f5);
+    --vc-db-muted: var(--text-muted, #949ba4);
+    --vc-db-subtle: var(--text-subtle, var(--text-muted, #949ba4));
     --vc-db-border: var(--border-subtle, rgb(255 255 255 / 8%));
-    --vc-db-border-strong: var(--border-strong, rgb(255 255 255 / 16%));
+    --vc-db-border-strong: var(--border-strong, rgb(255 255 255 / 14%));
     --vc-db-brand: var(--brand-500, #5865f2);
     --vc-db-positive: var(--status-positive, #23a55a);
     --vc-db-danger: var(--status-danger, #f23f43);
@@ -86,87 +92,79 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 }
 
 .vc-desktop-bounties-pageInner {
-    width: min(1220px, calc(100% - 64px));
+    width: min(1180px, calc(100% - 64px));
     margin: 0 auto;
-    padding: 32px 0 56px;
+    padding: 30px 0 64px;
 }
 
+/* Discord-like page heading: no floating hero card. */
 .vc-desktop-bounties-pageHeader {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
-    gap: 28px;
-    padding: 24px;
-    border: 1px solid var(--vc-db-border);
-    border-radius: 16px;
-    background: var(--vc-db-surface);
-    color: var(--vc-db-text);
-    box-shadow: 0 1px 0 rgb(0 0 0 / 10%);
+    gap: 24px;
+    padding: 4px 2px 24px;
+    border-bottom: 1px solid var(--vc-db-border);
 }
 
 .vc-desktop-bounties-headingGroup {
     min-width: 0;
     display: flex;
-    align-items: flex-start;
-    gap: 16px;
+    align-items: center;
+    gap: 14px;
 }
 
 .vc-desktop-bounties-headingIcon {
-    width: 48px;
-    height: 48px;
+    width: 42px;
+    height: 42px;
     display: grid;
     place-items: center;
     flex: 0 0 auto;
-    border-radius: 14px;
+    border-radius: 12px;
     background: var(--vc-db-brand);
     color: #fff;
 }
 
 .vc-desktop-bounties-headingIcon svg {
-    width: 28px;
-    height: 28px;
+    width: 25px;
+    height: 25px;
 }
 
 .vc-desktop-bounties-headingText {
     min-width: 0;
 }
 
-.vc-desktop-bounties-eyebrow {
-    margin-bottom: 4px;
-    color: var(--vc-db-text-muted);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: .08em;
-}
-
 .vc-desktop-bounties-pageHeader h1 {
     margin: 0;
-    color: var(--vc-db-text-strong) !important;
-    font-size: 30px;
+    color: var(--vc-db-strong) !important;
+    font-size: 24px;
     font-weight: 700;
-    line-height: 1.1;
+    line-height: 1.2;
 }
 
 .vc-desktop-bounties-pageHeader p {
-    max-width: 700px;
-    margin: 8px 0 0;
-    color: var(--vc-db-text-muted) !important;
-    font-size: 14px;
-    line-height: 1.45;
+    margin: 4px 0 0;
+    color: var(--vc-db-muted) !important;
+    font-size: 13px;
+    line-height: 1.4;
 }
 
 .vc-desktop-bounties-summaryLine {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 16px;
-    margin-top: 14px;
-    color: var(--vc-db-text-muted);
+    gap: 7px 14px;
+    margin-top: 9px;
+    color: var(--vc-db-muted);
     font-size: 12px;
 }
 
+.vc-desktop-bounties-summaryLine span {
+    color: var(--vc-db-muted) !important;
+}
+
 .vc-desktop-bounties-summaryLine strong {
-    color: var(--vc-db-text-strong);
-    font-weight: 700;
+    color: var(--vc-db-text) !important;
+    font-weight: 600;
 }
 
 .vc-desktop-bounties-headerActions {
@@ -181,79 +179,67 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 .vc-desktop-bounties-refreshButton,
 .vc-desktop-bounties-primaryButton,
 .vc-desktop-bounties-secondaryButton {
+    min-height: 36px;
     border: 0;
     outline: none;
+    border-radius: 8px;
     font: inherit;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 120ms ease, color 120ms ease, transform 120ms ease, opacity 120ms ease;
-}
-
-.vc-desktop-bounties-orbPill {
-    min-height: 38px;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 12px;
-    border: 1px solid var(--vc-db-border);
-    border-radius: 999px;
-    background: var(--vc-db-surface-raised);
-    color: var(--vc-db-text);
-}
-
-.vc-desktop-bounties-orbPill:hover {
-    background: var(--vc-db-surface-active);
-    color: var(--vc-db-text-strong);
-}
-
-.vc-desktop-bounties-orbPill:active {
-    transform: translateY(1px);
-}
-
-.vc-desktop-bounties-orbIcon {
-    width: 20px;
-    height: 20px;
-    color: var(--vc-db-brand);
-}
-
-.vc-desktop-bounties-orbValue {
-    color: var(--vc-db-text-strong) !important;
-    font-size: 14px;
-    font-weight: 700;
-}
-
-.vc-desktop-bounties-orbLabel {
-    color: var(--vc-db-text-muted) !important;
-    font-size: 12px;
+    transition: background-color 120ms ease, color 120ms ease, opacity 120ms ease;
 }
 
 .vc-desktop-bounties-refreshButton,
-.vc-desktop-bounties-primaryButton,
 .vc-desktop-bounties-secondaryButton {
-    min-height: 36px;
     padding: 0 14px;
-    border-radius: 8px;
-    font-size: 13px;
-}
-
-.vc-desktop-bounties-refreshButton,
-.vc-desktop-bounties-secondaryButton {
-    background: var(--vc-db-surface-raised);
-    color: var(--vc-db-text-strong);
+    background: var(--vc-db-surface);
+    color: var(--vc-db-text);
 }
 
 .vc-desktop-bounties-refreshButton:hover:not(:disabled),
 .vc-desktop-bounties-secondaryButton:hover:not(:disabled) {
-    background: var(--vc-db-surface-active);
+    background: var(--vc-db-active);
+    color: var(--vc-db-strong);
 }
 
 .vc-desktop-bounties-primaryButton {
+    padding: 0 14px;
     background: var(--vc-db-brand);
     color: #fff;
 }
 
-.vc-desktop-bounties-primaryButton:hover {
-    filter: brightness(1.07);
+.vc-desktop-bounties-orbPill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 12px;
+    border: 1px solid var(--vc-db-border);
+    border-radius: 999px;
+    background: var(--vc-db-surface);
+    color: var(--vc-db-text);
+}
+
+.vc-desktop-bounties-orbPill:hover {
+    background: var(--vc-db-surface-2);
+}
+
+.vc-desktop-bounties-orbIcon {
+    width: 18px;
+    height: 18px;
+    color: var(--vc-db-brand);
+}
+
+.vc-desktop-bounties-orbValue {
+    color: var(--vc-db-strong) !important;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.vc-desktop-bounties-orbLabel {
+    color: var(--vc-db-muted) !important;
+    font-size: 12px;
+    font-weight: 500;
 }
 
 .vc-desktop-bounties-refreshButton:disabled,
@@ -273,16 +259,16 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     display: flex;
     flex-direction: column;
     gap: 4px;
-    margin-top: 18px;
+    margin-top: 20px;
     padding: 14px 16px;
     border: 1px solid var(--vc-db-border);
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--vc-db-surface);
     color: var(--vc-db-text);
 }
 
 .vc-desktop-bounties-error {
-    border-color: color-mix(in srgb, var(--vc-db-danger) 42%, var(--vc-db-border));
+    border-color: var(--vc-db-danger);
 }
 
 .vc-desktop-bounties-error strong {
@@ -290,14 +276,15 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 }
 
 .vc-desktop-bounties-error span {
-    color: var(--vc-db-text-muted) !important;
+    color: var(--vc-db-muted) !important;
 }
 
 .vc-desktop-bounties-section {
     margin-top: 30px;
 }
 
-.vc-desktop-bounties-section--completed {
+.vc-desktop-bounties-section--completed,
+.vc-desktop-bounties-section--history {
     padding-top: 28px;
     border-top: 1px solid var(--vc-db-border);
 }
@@ -313,82 +300,87 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 .vc-desktop-bounties-sectionTitleRow {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
 }
 
 .vc-desktop-bounties-sectionTitleRow h2 {
     margin: 0;
-    color: var(--vc-db-text-strong) !important;
-    font-size: 20px;
-    font-weight: 700;
-    line-height: 1.2;
+    color: var(--vc-db-strong) !important;
+    font-size: 18px;
+    font-weight: 650;
+    line-height: 1.25;
 }
 
 .vc-desktop-bounties-sectionHeader p {
-    margin: 5px 0 0;
-    color: var(--vc-db-text-muted) !important;
-    font-size: 13px;
+    margin: 4px 0 0;
+    color: var(--vc-db-muted) !important;
+    font-size: 12px;
     line-height: 1.4;
 }
 
 .vc-desktop-bounties-sectionCount {
-    min-width: 24px;
-    padding: 2px 8px;
+    min-width: 21px;
+    padding: 1px 7px;
     border-radius: 999px;
-    background: var(--vc-db-surface-raised);
-    color: var(--vc-db-text) !important;
-    font-size: 12px;
-    font-weight: 700;
+    background: var(--vc-db-surface-2);
+    color: var(--vc-db-muted) !important;
+    font-size: 11px;
+    font-weight: 600;
     text-align: center;
 }
 
 .vc-desktop-bounties-sectionCheck,
-.vc-desktop-bounties-emptyCheck {
-    width: 24px;
-    height: 24px;
+.vc-desktop-bounties-emptyCheck,
+.vc-desktop-bounties-emptyPlay {
     display: grid;
     place-items: center;
     flex: 0 0 auto;
     border-radius: 50%;
-    background: color-mix(in srgb, var(--vc-db-positive) 18%, var(--vc-db-surface));
+}
+
+.vc-desktop-bounties-sectionCheck {
+    width: 22px;
+    height: 22px;
+    background: rgb(35 165 90 / 15%);
     color: var(--vc-db-positive);
 }
 
-.vc-desktop-bounties-sectionCheck svg,
-.vc-desktop-bounties-emptyCheck svg {
-    width: 16px;
-    height: 16px;
+.vc-desktop-bounties-sectionCheck svg {
+    width: 14px;
+    height: 14px;
 }
 
 .vc-desktop-bounties-grid,
 .vc-desktop-bounties-skeletonGrid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px;
+    gap: 16px;
 }
 
 .vc-desktop-bounties-card,
 .vc-desktop-bounties-skeletonCard {
     overflow: hidden;
     border: 1px solid var(--vc-db-border);
-    border-radius: 14px;
+    border-radius: 10px;
     background: var(--vc-db-surface);
 }
 
 .vc-desktop-bounties-card {
     color: var(--vc-db-text);
-    transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+    transition: background-color 120ms ease, border-color 120ms ease;
 }
 
 .vc-desktop-bounties-card:hover {
     border-color: var(--vc-db-border-strong);
-    transform: translateY(-1px);
-    box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
+    background: var(--vc-db-surface-2);
 }
 
 .vc-desktop-bounties-card--completed {
-    border-color: color-mix(in srgb, var(--vc-db-positive) 68%, var(--vc-db-border));
-    box-shadow: inset 3px 0 0 var(--vc-db-positive);
+    border-color: rgb(35 165 90 / 45%);
+}
+
+.vc-desktop-bounties-card--history {
+    background: var(--vc-db-surface);
 }
 
 .vc-desktop-bounties-media {
@@ -396,7 +388,7 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     width: 100%;
     aspect-ratio: 16 / 9;
     overflow: hidden;
-    background: var(--vc-db-surface-raised);
+    background: #0b0c0e;
 }
 
 .vc-desktop-bounties-media img,
@@ -405,10 +397,7 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     height: 100%;
     display: block;
     object-fit: cover;
-}
-
-.vc-desktop-bounties-card--completed .vc-desktop-bounties-media img {
-    filter: saturate(.72) brightness(.7);
+    background: #000;
 }
 
 .vc-desktop-bounties-mediaFallback {
@@ -416,38 +405,67 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     height: 100%;
     display: grid;
     place-items: center;
-    color: var(--vc-db-text-muted);
+    color: var(--vc-db-muted);
 }
 
 .vc-desktop-bounties-mediaFallback svg {
-    width: 54px;
-    height: 54px;
+    width: 48px;
+    height: 48px;
 }
 
-.vc-desktop-bounties-statusPill {
+.vc-desktop-bounties-mediaFallback--archive {
+    align-content: center;
+    gap: 8px;
+    background: var(--vc-db-surface-2);
+}
+
+.vc-desktop-bounties-mediaFallback--archive svg {
+    width: 36px;
+    height: 36px;
+}
+
+.vc-desktop-bounties-mediaFallback--archive span {
+    color: var(--vc-db-muted) !important;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.vc-desktop-bounties-statusPill,
+.vc-desktop-bounties-videoNotice {
     position: absolute;
     top: 10px;
-    left: 10px;
-    z-index: 2;
+    z-index: 3;
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 5px 8px;
-    border: 1px solid rgb(255 255 255 / 14%);
+    min-height: 24px;
+    padding: 4px 8px;
+    border: 1px solid rgb(255 255 255 / 12%);
     border-radius: 999px;
-    background: rgb(17 18 20 / 78%);
-    color: #fff !important;
+    background: rgb(17 18 20 / 82%);
+    color: #f2f3f5 !important;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     backdrop-filter: blur(8px);
 }
 
+.vc-desktop-bounties-statusPill {
+    left: 10px;
+}
+
+.vc-desktop-bounties-videoNotice {
+    right: 10px;
+    color: #b5bac1 !important;
+}
+
 .vc-desktop-bounties-statusPill--progress {
-    background: color-mix(in srgb, var(--vc-db-brand) 82%, #111214);
+    background: rgb(88 101 242 / 88%);
+    color: #fff !important;
 }
 
 .vc-desktop-bounties-statusPill--completed {
-    background: color-mix(in srgb, var(--vc-db-positive) 84%, #111214);
+    background: rgb(35 165 90 / 88%);
+    color: #fff !important;
 }
 
 .vc-desktop-bounties-statusPill svg {
@@ -455,40 +473,11 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     height: 13px;
 }
 
-.vc-desktop-bounties-completedOverlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    background: rgb(0 0 0 / 48%);
-    color: #fff !important;
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: .01em;
-}
-
-.vc-desktop-bounties-completedCheck {
-    width: 34px;
-    height: 34px;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    background: var(--vc-db-positive);
-    color: #fff;
-}
-
-.vc-desktop-bounties-completedCheck svg {
-    width: 22px;
-    height: 22px;
-}
-
 .vc-desktop-bounties-body {
     display: flex;
     flex-direction: column;
-    gap: 13px;
-    padding: 16px;
+    gap: 12px;
+    padding: 15px;
     color: var(--vc-db-text);
 }
 
@@ -499,10 +488,10 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 }
 
 .vc-desktop-bounties-icon {
-    width: 40px;
-    height: 40px;
+    width: 38px;
+    height: 38px;
     flex: 0 0 auto;
-    border-radius: 10px;
+    border-radius: 9px;
     object-fit: cover;
 }
 
@@ -516,17 +505,19 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 
 .vc-desktop-bounties-titleText strong {
     overflow: hidden;
-    color: var(--vc-db-text-strong) !important;
-    font-size: 16px;
-    font-weight: 700;
+    color: var(--vc-db-strong) !important;
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 1.3;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .vc-desktop-bounties-titleText span {
     overflow: hidden;
-    color: var(--vc-db-text-muted) !important;
+    color: var(--vc-db-muted) !important;
     font-size: 12px;
+    line-height: 1.35;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -536,7 +527,7 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    color: var(--vc-db-text-muted);
+    color: var(--vc-db-muted);
     font-size: 12px;
 }
 
@@ -545,19 +536,19 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 }
 
 .vc-desktop-bounties-progressText strong {
-    color: var(--vc-db-text-strong) !important;
+    color: var(--vc-db-text) !important;
+    font-weight: 600;
 }
 
 .vc-desktop-bounties-successText {
     color: var(--vc-db-positive) !important;
-    font-weight: 600;
 }
 
 .vc-desktop-bounties-progress {
-    height: 8px;
+    height: 7px;
     overflow: hidden;
     border-radius: 999px;
-    background: var(--vc-db-surface-raised);
+    background: var(--vc-db-surface-2);
 }
 
 .vc-desktop-bounties-progress > div {
@@ -576,9 +567,8 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     flex-direction: column;
     gap: 3px;
     padding: 10px 12px;
-    border: 1px solid color-mix(in srgb, var(--vc-db-danger) 36%, var(--vc-db-border));
     border-radius: 8px;
-    background: color-mix(in srgb, var(--vc-db-danger) 10%, var(--vc-db-surface));
+    background: rgb(242 63 67 / 10%);
     color: var(--vc-db-text);
     font-size: 12px;
 }
@@ -588,7 +578,7 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 }
 
 .vc-desktop-bounties-claimError span {
-    color: var(--vc-db-text) !important;
+    color: var(--vc-db-muted) !important;
 }
 
 .vc-desktop-bounties-cardFooter {
@@ -596,11 +586,11 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding-top: 2px;
+    padding-top: 1px;
 }
 
 .vc-desktop-bounties-requirement {
-    color: var(--vc-db-text-muted) !important;
+    color: var(--vc-db-muted) !important;
     font-size: 11px;
 }
 
@@ -610,68 +600,85 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     gap: 8px;
 }
 
+.vc-desktop-bounties-historyMeta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    color: var(--vc-db-muted);
+    font-size: 11px;
+}
+
+.vc-desktop-bounties-historyMeta span {
+    color: var(--vc-db-muted) !important;
+}
+
+.vc-desktop-bounties-archiveNote {
+    margin: 0;
+    color: var(--vc-db-subtle) !important;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
 .vc-desktop-bounties-emptyState {
-    min-height: 92px;
+    min-height: 82px;
     display: flex;
     align-items: center;
     gap: 14px;
-    padding: 18px;
-    border: 1px dashed var(--vc-db-border-strong);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--vc-db-surface) 80%, transparent);
+    padding: 16px 18px;
+    border: 1px solid var(--vc-db-border);
+    border-radius: 9px;
+    background: var(--vc-db-surface);
     color: var(--vc-db-text);
-}
-
-.vc-desktop-bounties-emptyState--compact {
-    padding: 18px 20px;
 }
 
 .vc-desktop-bounties-emptyState h3 {
     margin: 0;
-    color: var(--vc-db-text-strong) !important;
-    font-size: 15px;
-    font-weight: 700;
+    color: var(--vc-db-text) !important;
+    font-size: 14px;
+    font-weight: 600;
 }
 
 .vc-desktop-bounties-emptyState p {
-    max-width: 720px;
-    margin: 4px 0 0;
-    color: var(--vc-db-text-muted) !important;
-    font-size: 13px;
+    max-width: 760px;
+    margin: 3px 0 0;
+    color: var(--vc-db-muted) !important;
+    font-size: 12px;
     line-height: 1.45;
 }
 
-.vc-desktop-bounties-emptyIcon {
-    width: 42px;
-    height: 42px;
-    display: grid;
-    place-items: center;
+.vc-desktop-bounties-emptyIcon,
+.vc-desktop-bounties-emptyCheck,
+.vc-desktop-bounties-emptyPlay {
+    width: 38px;
+    height: 38px;
     flex: 0 0 auto;
-    border-radius: 50%;
-    background: var(--vc-db-surface-raised);
-    color: var(--vc-db-text-muted);
-}
-
-.vc-desktop-bounties-emptyIcon svg {
-    width: 24px;
-    height: 24px;
+    background: var(--vc-db-surface-2);
+    color: var(--vc-db-muted);
 }
 
 .vc-desktop-bounties-emptyCheck {
-    width: 42px;
-    height: 42px;
+    background: rgb(35 165 90 / 13%);
+    color: var(--vc-db-positive);
 }
 
-.vc-desktop-bounties-emptyCheck svg {
-    width: 24px;
-    height: 24px;
+.vc-desktop-bounties-emptyIcon svg,
+.vc-desktop-bounties-emptyCheck svg,
+.vc-desktop-bounties-emptyPlay svg {
+    width: 21px;
+    height: 21px;
 }
 
 .vc-desktop-bounties-skeletonCard {
-    min-height: 320px;
-    background: linear-gradient(90deg, var(--vc-db-surface) 25%, var(--vc-db-surface-raised) 50%, var(--vc-db-surface) 75%);
+    min-height: 300px;
+    background: linear-gradient(90deg, var(--vc-db-surface) 25%, var(--vc-db-surface-2) 50%, var(--vc-db-surface) 75%);
     background-size: 200% 100%;
     animation: vc-desktop-bounties-shimmer 1.4s infinite linear;
+}
+
+.vc-desktop-bounties-historyLoading {
+    padding: 14px 2px;
+    color: var(--vc-db-muted);
+    font-size: 12px;
 }
 
 @keyframes vc-desktop-bounties-shimmer {
@@ -680,16 +687,16 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 }
 
 .vc-desktop-bounties-debug {
-    margin-top: 28px;
+    margin-top: 30px;
     padding-top: 14px;
     border-top: 1px solid var(--vc-db-border);
-    color: var(--vc-db-text-muted);
+    color: var(--vc-db-muted);
     font-size: 11px;
 }
 
 .vc-desktop-bounties-debug summary {
     width: max-content;
-    color: var(--vc-db-text-muted) !important;
+    color: var(--vc-db-muted) !important;
     cursor: pointer;
     user-select: none;
 }
@@ -702,12 +709,12 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
 }
 
 .vc-desktop-bounties-debug span {
-    color: var(--vc-db-text-muted) !important;
+    color: var(--vc-db-muted) !important;
 }
 
 @media (max-width: 900px) {
     .vc-desktop-bounties-pageInner {
-        width: min(100% - 32px, 1220px);
+        width: min(100% - 32px, 1180px);
     }
 
     .vc-desktop-bounties-grid,
@@ -726,10 +733,6 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
     .vc-desktop-bounties-headerActions {
         justify-content: flex-start;
     }
-
-    .vc-desktop-bounties-headingGroup {
-        align-items: center;
-    }
 }
 
 @media (max-width: 480px) {
@@ -738,13 +741,9 @@ li:has(+ .vc-desktop-bounties-navShell .vc-desktop-bounties-navButton--active) [
         padding-top: 18px;
     }
 
-    .vc-desktop-bounties-pageHeader {
-        padding: 18px;
-    }
-
     .vc-desktop-bounties-headingIcon {
-        width: 42px;
-        height: 42px;
+        width: 38px;
+        height: 38px;
     }
 
     .vc-desktop-bounties-headerActions,
