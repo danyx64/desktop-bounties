@@ -1,3 +1,49 @@
+.vc-desktop-bounties-navShell {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.vc-desktop-bounties-navButton {
+    width: calc(100% - 16px);
+    height: 42px;
+    margin: 1px 8px;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--interactive-normal);
+    font: inherit;
+    font-size: 16px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+}
+
+.vc-desktop-bounties-navButton:hover {
+    background: var(--background-mod-subtle);
+    color: var(--interactive-hover);
+}
+
+.vc-desktop-bounties-navButton:active {
+    background: var(--background-mod-strong);
+    color: var(--interactive-active);
+}
+
+.vc-desktop-bounties-navButton:focus-visible {
+    outline: 2px solid var(--text-link);
+    outline-offset: -2px;
+}
+
+.vc-desktop-bounties-navIcon {
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+}
+
 .vc-desktop-bounties-root {
     display: flex;
     flex-direction: column;
@@ -18,13 +64,14 @@
     color: var(--text-normal);
 }
 
-.vc-desktop-bounties-error {
+.vc-desktop-bounties-error,
+.vc-desktop-bounties-claimError {
     color: var(--text-danger);
 }
 
 .vc-desktop-bounties-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 16px;
 }
 
@@ -77,6 +124,7 @@
     height: 40px;
     border-radius: 10px;
     object-fit: cover;
+    background: var(--background-tertiary);
 }
 
 .vc-desktop-bounties-titleText {
@@ -108,23 +156,84 @@
     gap: 8px 12px;
 }
 
-.vc-desktop-bounties-cta {
+.vc-desktop-bounties-progressText {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--text-normal);
+    font-size: 13px;
+}
+
+.vc-desktop-bounties-progressText span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vc-desktop-bounties-progressText strong {
+    color: var(--header-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.vc-desktop-bounties-progress {
+    width: 100%;
+    height: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--background-tertiary);
+}
+
+.vc-desktop-bounties-progress > div {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--brand-500, var(--brand-experiment));
+    transition: width 180ms linear;
+}
+
+.vc-desktop-bounties-claimError {
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--status-danger) 12%, transparent);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.vc-desktop-bounties-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.vc-desktop-bounties-cta,
+.vc-desktop-bounties-secondaryButton {
     min-height: 36px;
     padding: 0 14px;
     border: 0;
     border-radius: 8px;
-    background: var(--brand-experiment);
-    color: var(--white-500);
     font: inherit;
     font-weight: 600;
     cursor: pointer;
 }
 
-.vc-desktop-bounties-cta:hover:not(:disabled) {
+.vc-desktop-bounties-cta {
+    background: var(--brand-500, var(--brand-experiment));
+    color: var(--white-500);
+}
+
+.vc-desktop-bounties-secondaryButton {
+    background: var(--background-mod-strong);
+    color: var(--text-normal);
+}
+
+.vc-desktop-bounties-cta:hover:not(:disabled),
+.vc-desktop-bounties-secondaryButton:hover:not(:disabled) {
     filter: brightness(1.05);
 }
 
-.vc-desktop-bounties-cta:disabled {
+.vc-desktop-bounties-cta:disabled,
+.vc-desktop-bounties-secondaryButton:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
