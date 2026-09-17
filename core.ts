@@ -141,9 +141,18 @@ export function rememberClaimed(content: BountyCreativeContent) {
         const ids = readClaimedIds();
         ids.add(content.id);
         localStorage.setItem(CLAIMED_STORAGE_KEY, JSON.stringify([...ids]));
-        const snapshots = readClaimedSnapshots().filter(snapshot => snapshot.id !== content.id);
-        snapshots.unshift({ ...content, claimedAt: Date.now() });
-        localStorage.setItem(CLAIMED_SNAPSHOTS_STORAGE_KEY, JSON.stringify(snapshots.slice(0, 50)));
+
+        const existing = readClaimedSnapshots();
+        const previous = existing.find(snapshot => snapshot.id === content.id);
+        const snapshots = existing.filter(snapshot => snapshot.id !== content.id);
+        snapshots.unshift({
+            ...content,
+            claimedAt: previous?.claimedAt ?? Date.now()
+        });
+
+        // Keep the full local completion history. Bounty creative snapshots are small
+        // and Discord does not expose a separate claimed-Bounty history endpoint here.
+        localStorage.setItem(CLAIMED_SNAPSHOTS_STORAGE_KEY, JSON.stringify(snapshots));
     } catch { }
 }
 
