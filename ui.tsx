@@ -28,7 +28,6 @@ import {
 } from "./core";
 
 type ClaimState = "idle" | "claiming" | "claimed" | "error";
-type BountiesTab = "available" | "progress" | "completed";
 
 function BountyIcon({ className = "" }: { className?: string; }) {
     return (
@@ -62,6 +61,20 @@ function CheckIcon() {
     );
 }
 
+function formatClaimedAt(value?: number): string | null {
+    if (!value || !Number.isFinite(value)) return null;
+
+    try {
+        return new Date(value).toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric"
+        });
+    } catch {
+        return null;
+    }
+}
+
 export function BountiesNavItem() {
     const [active, setActive] = React.useState(isBountiesRoute);
 
@@ -86,7 +99,7 @@ export function BountiesNavItem() {
                 onClick={openBountiesPage}
             >
                 <BountyIcon className="vc-desktop-bounties-navIcon" />
-                <span>Bounties</span>
+                <span className="vc-desktop-bounties-navLabel">Bounties</span>
             </button>
         </li>
     );
@@ -95,11 +108,13 @@ export function BountiesNavItem() {
 function BountyCard({
     decision,
     clientAdSessionId,
+    claimedAt,
     onBecameInProgress,
     onClaimed
 }: {
     decision: AdDecision;
     clientAdSessionId: string;
+    claimedAt?: number;
     onBecameInProgress: () => void;
     onClaimed: () => void;
 }) {
@@ -127,9 +142,11 @@ function BountyCard({
     const notifiedProgressRef = React.useRef(getSavedProgress(content.id) > 0);
     const wholeSeconds = Math.floor(watchedSeconds);
     const completed = claimState === "claimed";
+    const started = wholeSeconds > 0 && !completed;
     const progressPercent = completed
         ? 100
         : Math.min(100, Math.round((watchedSeconds / targetSeconds) * 100));
+    const claimedDate = formatClaimedAt(claimedAt);
 
     const doClaim = React.useCallback(async () => {
         if (claimState === "claiming" || claimState === "claimed") return;
@@ -193,8 +210,8 @@ function BountyCard({
     }, [watchedSeconds, targetSeconds, claimState, doClaim]);
 
     const statusText = (() => {
-        if (claimState === "claimed") return "Claimed on Discord";
-        if (claimState === "claiming") return "Sending completion to Discord…";
+        if (claimState === "claimed") return claimedDate ? `Completed ${claimedDate}` : "Completed and claimed on Discord";
+        if (claimState === "claiming") return "Watch complete — claiming reward…";
         if (claimState === "error") return "Watch complete — claim needs retry";
         if (watchedSeconds >= targetSeconds) return "Watch complete — ready to claim";
         if (isPlaying) return `${wholeSeconds}s of ${targetSeconds}s watched`;
@@ -243,6 +260,11 @@ function BountyCard({
                     </div>
                 )}
 
+                <span className={`vc-desktop-bounties-statusPill${completed ? " vc-desktop-bounties-statusPill--completed" : started ? " vc-desktop-bounties-statusPill--progress" : ""}`}>
+                    {completed && <CheckIcon />}
+                    {completed ? "Completed" : started ? "In progress" : "Available"}
+                </span>
+
                 {completed && (
                     <div className="vc-desktop-bounties-completedOverlay">
                         <span className="vc-desktop-bounties-completedCheck"><CheckIcon /></span>
@@ -260,12 +282,6 @@ function BountyCard({
                             <span>{content.advertiser_name}</span>
                         )}
                     </div>
-                    {completed && (
-                        <span className="vc-desktop-bounties-completedPill">
-                            <CheckIcon />
-                            Completed
-                        </span>
-                    )}
                 </div>
 
                 <div className="vc-desktop-bounties-progressText">
@@ -320,13 +336,37 @@ function BountyCard({
     );
 }
 
+function SectionHeader({
+    title,
+    description,
+    count,
+    completed = false
+}: {
+    title: string;
+    description: string;
+    count: number;
+    completed?: boolean;
+}) {
+    return (
+        <div className="vc-desktop-bounties-sectionHeader">
+            <div>
+                <div className="vc-desktop-bounties-sectionTitleRow">
+                    {completed && <span className="vc-desktop-bounties-sectionCheck"><CheckIcon /></span>}
+                    <h2>{title}</h2>
+                    <span className="vc-desktop-bounties-sectionCount">{count}</span>
+                </div>
+                <p>{description}</p>
+            </div>
+        </div>
+    );
+}
+
 function BountiesPage() {
     const [result, setResult] = React.useState<LoadResult | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [orbBalance, setOrbBalance] = React.useState<number | null>(null);
     const [orbLoading, setOrbLoading] = React.useState(true);
-    const [selectedTab, setSelectedTab] = React.useState<BountiesTab>("available");
     const [localVersion, setLocalVersion] = React.useState(0);
 
     const loadOrbBalance = React.useCallback(async () => {
@@ -361,6 +401,13 @@ function BountiesPage() {
         void load();
     }, [load]);
 
+    const claimedSnapshots = React.useMemo(() => readClaimedSnapshots(), [localVersion]);
+    const claimedAtById = React.useMemo(() => {
+        const map = new Map<string, number>();
+        for (const snapshot of claimedSnapshots) map.set(snapshot.id, snapshot.claimedAt);
+        return map;
+    }, [claimedSnapshots]);
+
     const mergedBounties = React.useMemo(() => {
         const byId = new Map<string, AdDecision>();
 
@@ -369,16 +416,15 @@ function BountiesPage() {
             if (id) byId.set(id, decision);
         }
 
-        for (const snapshot of readClaimedSnapshots()) {
+        for (const snapshot of claimedSnapshots) {
             if (!byId.has(snapshot.id)) byId.set(snapshot.id, snapshotToDecision(snapshot));
         }
 
         return [...byId.values()];
-    }, [result, localVersion]);
+    }, [result, claimedSnapshots]);
 
     const classified = React.useMemo(() => {
-        const available: AdDecision[] = [];
-        const progress: AdDecision[] = [];
+        const todo: AdDecision[] = [];
         const completed: AdDecision[] = [];
 
         for (const decision of mergedBounties) {
@@ -386,14 +432,32 @@ function BountiesPage() {
             if (!content) continue;
 
             if (isLocallyClaimed(content.id)) completed.push(decision);
-            else if (getSavedProgress(content.id) > 0) progress.push(decision);
-            else available.push(decision);
+            else todo.push(decision);
         }
 
-        return { available, progress, completed };
-    }, [mergedBounties, localVersion]);
+        todo.sort((a, b) => {
+            const aId = getBountyContent(a)?.id ?? "";
+            const bId = getBountyContent(b)?.id ?? "";
+            return getSavedProgress(bId) - getSavedProgress(aId);
+        });
 
-    const visibleBounties = classified[selectedTab];
+        completed.sort((a, b) => {
+            const aId = getBountyContent(a)?.id ?? "";
+            const bId = getBountyContent(b)?.id ?? "";
+            return (claimedAtById.get(bId) ?? 0) - (claimedAtById.get(aId) ?? 0);
+        });
+
+        return { todo, completed };
+    }, [mergedBounties, claimedAtById, localVersion]);
+
+    const inProgressCount = React.useMemo(
+        () => classified.todo.filter(decision => {
+            const id = getBountyContent(decision)?.id;
+            return id ? getSavedProgress(id) > 0 : false;
+        }).length,
+        [classified.todo, localVersion]
+    );
+
     const clientAdSessionId = result?.clientAdSessionId ?? getAdSessionId();
     const creativeTypes = React.useMemo(() => {
         if (!result) return "";
@@ -414,63 +478,46 @@ function BountiesPage() {
         setLocalVersion(version => version + 1);
     }, []);
 
-    const tabs: Array<{ id: BountiesTab; label: string; count: number; }> = [
-        { id: "available", label: "Available", count: classified.available.length },
-        { id: "progress", label: "In Progress", count: classified.progress.length },
-        { id: "completed", label: "Completed", count: classified.completed.length }
-    ];
-
     return (
         <div className="vc-desktop-bounties-page">
             <div className="vc-desktop-bounties-pageInner">
                 <header className="vc-desktop-bounties-pageHeader">
                     <div className="vc-desktop-bounties-headingGroup">
                         <div className="vc-desktop-bounties-headingIcon"><BountyIcon /></div>
-                        <div>
+                        <div className="vc-desktop-bounties-headingText">
                             <div className="vc-desktop-bounties-eyebrow">QUESTS</div>
                             <h1>Bounties</h1>
-                            <p>Watch eligible sponsored videos, track your progress, and claim the reward directly with Discord.</p>
+                            <p>Watch eligible sponsored videos and claim the reward directly with Discord.</p>
+                            <div className="vc-desktop-bounties-summaryLine">
+                                <span><strong>{classified.todo.length}</strong> to do</span>
+                                <span><strong>{inProgressCount}</strong> in progress</span>
+                                <span><strong>{classified.completed.length}</strong> completed</span>
+                            </div>
                         </div>
                     </div>
 
-                    <button
-                        type="button"
-                        className="vc-desktop-bounties-orbPill"
-                        title="Open the Orbs shop"
-                        onClick={() => NavigationRouter.transitionTo("/shop?tab=orbs")}
-                    >
-                        <OrbIcon />
-                        <span className="vc-desktop-bounties-orbValue">{orbLoading ? "…" : orbBalance != null ? orbBalance.toLocaleString() : "—"}</span>
-                        <span className="vc-desktop-bounties-orbLabel">Orbs</span>
-                    </button>
-                </header>
+                    <div className="vc-desktop-bounties-headerActions">
+                        <button
+                            type="button"
+                            className="vc-desktop-bounties-refreshButton"
+                            disabled={loading}
+                            onClick={() => void load()}
+                        >
+                            {loading ? "Refreshing…" : "Refresh"}
+                        </button>
 
-                <div className="vc-desktop-bounties-toolbar">
-                    <div className="vc-desktop-bounties-tabs" role="tablist" aria-label="Bounty status">
-                        {tabs.map(tab => (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                role="tab"
-                                aria-selected={selectedTab === tab.id}
-                                className={`vc-desktop-bounties-tab${selectedTab === tab.id ? " vc-desktop-bounties-tab--active" : ""}`}
-                                onClick={() => setSelectedTab(tab.id)}
-                            >
-                                <span>{tab.label}</span>
-                                <span className="vc-desktop-bounties-tabCount">{tab.count}</span>
-                            </button>
-                        ))}
+                        <button
+                            type="button"
+                            className="vc-desktop-bounties-orbPill"
+                            title="Open the Orbs shop"
+                            onClick={() => NavigationRouter.transitionTo("/shop?tab=orbs")}
+                        >
+                            <OrbIcon />
+                            <span className="vc-desktop-bounties-orbValue">{orbLoading ? "…" : orbBalance != null ? orbBalance.toLocaleString() : "—"}</span>
+                            <span className="vc-desktop-bounties-orbLabel">Orbs</span>
+                        </button>
                     </div>
-
-                    <button
-                        type="button"
-                        className="vc-desktop-bounties-refreshButton"
-                        disabled={loading}
-                        onClick={() => void load()}
-                    >
-                        {loading ? "Refreshing…" : "Refresh"}
-                    </button>
-                </div>
+                </header>
 
                 {error && (
                     <div className="vc-desktop-bounties-state vc-desktop-bounties-error">
@@ -479,42 +526,80 @@ function BountiesPage() {
                     </div>
                 )}
 
-                {loading && !result && (
-                    <div className="vc-desktop-bounties-skeletonGrid" aria-label="Loading Bounties">
-                        {Array.from({ length: 4 }).map((_, index) => (
-                            <div className="vc-desktop-bounties-skeletonCard" key={index} />
-                        ))}
-                    </div>
-                )}
+                <section className="vc-desktop-bounties-section">
+                    <SectionHeader
+                        title="To do"
+                        description="Available Bounties are shown here. Bounties you start watching stay at the top."
+                        count={classified.todo.length}
+                    />
 
-                {!loading && !error && mergedBounties.length === 0 && (
-                    <div className="vc-desktop-bounties-emptyState">
-                        <div className="vc-desktop-bounties-emptyIcon"><BountyIcon /></div>
-                        <h2>No Bounties available</h2>
-                        <p>Discord did not return any Bounty creatives for this account on the mobile Quest Home placement.</p>
-                    </div>
-                )}
+                    {loading && !result ? (
+                        <div className="vc-desktop-bounties-skeletonGrid" aria-label="Loading Bounties">
+                            {Array.from({ length: 4 }).map((_, index) => (
+                                <div className="vc-desktop-bounties-skeletonCard" key={index} />
+                            ))}
+                        </div>
+                    ) : classified.todo.length > 0 ? (
+                        <div className="vc-desktop-bounties-grid">
+                            {classified.todo.map((decision, index) => {
+                                const id = getBountyContent(decision)?.id;
+                                return (
+                                    <BountyCard
+                                        key={id ?? index}
+                                        decision={decision}
+                                        clientAdSessionId={clientAdSessionId}
+                                        claimedAt={id ? claimedAtById.get(id) : undefined}
+                                        onBecameInProgress={handleProgress}
+                                        onClaimed={handleClaimed}
+                                    />
+                                );
+                            })}
+                        </div>
+                    ) : !error && (
+                        <div className="vc-desktop-bounties-emptyState vc-desktop-bounties-emptyState--compact">
+                            <div className="vc-desktop-bounties-emptyIcon"><BountyIcon /></div>
+                            <div>
+                                <h3>No Bounties to do</h3>
+                                <p>Discord did not return any available Bounty creatives for this account right now.</p>
+                            </div>
+                        </div>
+                    )}
+                </section>
 
-                {!error && mergedBounties.length > 0 && visibleBounties.length === 0 && (
-                    <div className="vc-desktop-bounties-emptyState vc-desktop-bounties-emptyState--compact">
-                        <h2>{selectedTab === "completed" ? "No completed Bounties yet" : selectedTab === "progress" ? "Nothing in progress" : "No new Bounties"}</h2>
-                        <p>{selectedTab === "completed" ? "Completed Bounties will stay here after Discord accepts the reward claim." : selectedTab === "progress" ? "Start a video and it will move here automatically." : "Check back later or refresh the page."}</p>
-                    </div>
-                )}
+                <section className="vc-desktop-bounties-section vc-desktop-bounties-section--completed">
+                    <SectionHeader
+                        title="Completed"
+                        description="Every Bounty successfully claimed by this plugin stays in this history."
+                        count={classified.completed.length}
+                        completed
+                    />
 
-                {!!visibleBounties.length && (
-                    <div className="vc-desktop-bounties-grid">
-                        {visibleBounties.map((decision, index) => (
-                            <BountyCard
-                                key={getBountyContent(decision)?.id ?? index}
-                                decision={decision}
-                                clientAdSessionId={clientAdSessionId}
-                                onBecameInProgress={handleProgress}
-                                onClaimed={handleClaimed}
-                            />
-                        ))}
-                    </div>
-                )}
+                    {classified.completed.length > 0 ? (
+                        <div className="vc-desktop-bounties-grid">
+                            {classified.completed.map((decision, index) => {
+                                const id = getBountyContent(decision)?.id;
+                                return (
+                                    <BountyCard
+                                        key={id ?? index}
+                                        decision={decision}
+                                        clientAdSessionId={clientAdSessionId}
+                                        claimedAt={id ? claimedAtById.get(id) : undefined}
+                                        onBecameInProgress={handleProgress}
+                                        onClaimed={handleClaimed}
+                                    />
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="vc-desktop-bounties-emptyState vc-desktop-bounties-emptyState--compact">
+                            <span className="vc-desktop-bounties-emptyCheck"><CheckIcon /></span>
+                            <div>
+                                <h3>No completed Bounties yet</h3>
+                                <p>After Discord accepts a reward claim, the Bounty will be kept here.</p>
+                            </div>
+                        </div>
+                    )}
+                </section>
 
                 {result && (
                     <details className="vc-desktop-bounties-debug">
@@ -522,6 +607,7 @@ function BountiesPage() {
                         <div>
                             <span>Decisions: {result.decisions.length}</span>
                             <span>Live Bounties: {result.bounties.length}</span>
+                            <span>Saved completed: {classified.completed.length}</span>
                             {creativeTypes && <span>Creative types: {creativeTypes}</span>}
                             {result.requestId && <span>Request: {result.requestId}</span>}
                         </div>
