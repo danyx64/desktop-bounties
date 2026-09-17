@@ -1,8 +1,10 @@
-import { NavigationRouter, RestAPI } from "@webpack/common";
+import { filters, mapMangledModuleLazy } from "@webpack";
+import { NavigationRouter, RestAPI, UserStore } from "@webpack/common";
 
 export const QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT = 4;
 export const BOUNTY_CREATIVE_TYPE = 3;
-export const MAX_DECISIONS = 15;
+// Discord mobile currently requests five Quest Home Bounty decisions at once.
+export const MAX_DECISIONS = 5;
 export const BOUNTIES_ROUTE_PARAM = "vc_bounties";
 export const BOUNTIES_ROUTE = `/quest-home?${BOUNTIES_ROUTE_PARAM}=1`;
 
@@ -12,13 +14,38 @@ const CLAIMED_STORAGE_KEY = "vc-desktop-bounties-claimed-v1";
 const AD_SESSION_IDLE_MS = 30 * 60 * 1000;
 const AD_SESSION_MAX_MS = 12 * 60 * 60 * 1000;
 
-// Old versions stored local history. It is intentionally removed now: the page
-// only shows Bounties Discord currently serves to the account.
-const LEGACY_HISTORY_KEYS = [
+// Old builds used global localStorage keys. That meant completing a Bounty on
+// account A could hide the same creative on account B. Everything stateful is
+// account-scoped now.
+const LEGACY_GLOBAL_KEYS = [
+    AD_SESSION_STORAGE_KEY,
+    PROGRESS_STORAGE_KEY,
+    CLAIMED_STORAGE_KEY,
     "vc-desktop-bounties-claimed-snapshots-v1",
     "vc-desktop-bounties-seen-v1",
     "vc-desktop-bounties-video-quest-history-v1"
 ];
+
+interface DiscordSession {
+    uuid?: string;
+    createdAtTimestamp?: number;
+    lastUsedTimestamp?: number;
+}
+
+// Reuse Discord's real ad/heartbeat sessions when the current client exposes
+// them. This mirrors the official mobile BountyActionCreators request. Both are
+// optional server-side, so we keep safe fallbacks if Discord changes internals.
+const NativeAdSession = mapMangledModuleLazy("AD_SESSION_RESET", {
+    getSession: filters.byCode("AD_SESSION_RESET", "lastUsedTimestamp")
+}) as {
+    getSession?: (markUsed?: boolean) => DiscordSession | null;
+};
+
+const NativeHeartbeatSession = mapMangledModuleLazy("LAST_CLIENT_HEARTBEAT_SESSION", {
+    getSession: filters.byCode("handleUpdateTimeSpentSessionId", "lastUsedTimestamp")
+}) as {
+    getSession?: (updateGateway?: boolean) => Promise<DiscordSession | null>;
+};
 
 export interface BountyCTA {
     url?: string;
@@ -69,6 +96,7 @@ export interface LoadResult {
     decisions: AdDecision[];
     bounties: AdDecision[];
     clientAdSessionId: string;
+    clientHeartbeatSessionId?: string;
 }
 
 interface StoredAdSession {
@@ -77,9 +105,17 @@ interface StoredAdSession {
     lastUsedAt: number;
 }
 
-function clearLegacyHistory() {
+function currentUserId(): string {
+    return UserStore.getCurrentUser()?.id ?? "unknown-user";
+}
+
+function scopedStorageKey(base: string): string {
+    return `${base}:${currentUserId()}`;
+}
+
+function clearLegacyGlobalState() {
     try {
-        for (const key of LEGACY_HISTORY_KEYS) localStorage.removeItem(key);
+        for (const key of LEGACY_GLOBAL_KEYS) localStorage.removeItem(key);
     } catch { }
 }
 
@@ -92,28 +128,53 @@ function createUuid(): string {
     });
 }
 
-export function getAdSessionId(): string {
+function getFallbackAdSessionId(): string {
     const now = Date.now();
+    const key = scopedStorageKey(AD_SESSION_STORAGE_KEY);
 
     try {
-        const raw = localStorage.getItem(AD_SESSION_STORAGE_KEY);
+        const raw = localStorage.getItem(key);
         if (raw) {
             const stored = JSON.parse(raw) as StoredAdSession;
             if (stored.id && now - stored.lastUsedAt < AD_SESSION_IDLE_MS && now - stored.createdAt < AD_SESSION_MAX_MS) {
-                localStorage.setItem(AD_SESSION_STORAGE_KEY, JSON.stringify({ ...stored, lastUsedAt: now }));
+                localStorage.setItem(key, JSON.stringify({ ...stored, lastUsedAt: now }));
                 return stored.id;
             }
         }
     } catch { }
 
     const fresh: StoredAdSession = { id: createUuid(), createdAt: now, lastUsedAt: now };
-    try { localStorage.setItem(AD_SESSION_STORAGE_KEY, JSON.stringify(fresh)); } catch { }
+    try { localStorage.setItem(key, JSON.stringify(fresh)); } catch { }
     return fresh.id;
 }
 
+export function getAdSessionId(): string {
+    try {
+        const native = NativeAdSession.getSession?.(true);
+        if (native?.uuid) return native.uuid;
+    } catch (error) {
+        console.warn("[DesktopBounties] Could not reuse Discord ad session", error);
+    }
+
+    return getFallbackAdSessionId();
+}
+
+async function getHeartbeatSessionId(): Promise<string | undefined> {
+    try {
+        const native = await NativeHeartbeatSession.getSession?.();
+        return native?.uuid || undefined;
+    } catch (error) {
+        console.warn("[DesktopBounties] Could not reuse Discord heartbeat session", error);
+        return undefined;
+    }
+}
+
 function readProgress(): Record<string, number> {
-    try { return JSON.parse(localStorage.getItem(PROGRESS_STORAGE_KEY) ?? "{}") as Record<string, number>; }
-    catch { return {}; }
+    try {
+        return JSON.parse(localStorage.getItem(scopedStorageKey(PROGRESS_STORAGE_KEY)) ?? "{}") as Record<string, number>;
+    } catch {
+        return {};
+    }
 }
 
 export function getSavedProgress(id: string): number {
@@ -124,13 +185,13 @@ export function saveProgress(id: string, seconds: number) {
     try {
         const all = readProgress();
         all[id] = Math.max(0, seconds);
-        localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(all));
+        localStorage.setItem(scopedStorageKey(PROGRESS_STORAGE_KEY), JSON.stringify(all));
     } catch { }
 }
 
 function readClaimedIds(): Set<string> {
     try {
-        const ids = JSON.parse(localStorage.getItem(CLAIMED_STORAGE_KEY) ?? "[]") as string[];
+        const ids = JSON.parse(localStorage.getItem(scopedStorageKey(CLAIMED_STORAGE_KEY)) ?? "[]") as string[];
         return new Set(Array.isArray(ids) ? ids : []);
     } catch {
         return new Set();
@@ -145,7 +206,7 @@ export function rememberClaimed(id: string) {
     try {
         const ids = readClaimedIds();
         ids.add(id);
-        localStorage.setItem(CLAIMED_STORAGE_KEY, JSON.stringify([...ids]));
+        localStorage.setItem(scopedStorageKey(CLAIMED_STORAGE_KEY), JSON.stringify([...ids]));
     } catch { }
 }
 
@@ -203,16 +264,26 @@ export function getBountyContent(decision: AdDecision): BountyCreativeContent | 
 }
 
 export async function fetchBounties(): Promise<LoadResult> {
-    clearLegacyHistory();
+    clearLegacyGlobalState();
 
+    // This follows Discord mobile's BountyActionCreators request:
+    // placement=QUEST_HOME_MOBILE_CAROUSEL (4), five decisions, current ad
+    // session, and the current analytics heartbeat session when available.
     const clientAdSessionId = getAdSessionId();
+    const clientHeartbeatSessionId = await getHeartbeatSessionId();
+    const query: Record<string, string | number> = {
+        placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
+        num_decisions_requested: MAX_DECISIONS,
+        client_ad_session_id: clientAdSessionId
+    };
+
+    if (clientHeartbeatSessionId) {
+        query.client_heartbeat_session_id = clientHeartbeatSessionId;
+    }
+
     const response = await RestAPI.get({
         url: "/quests/get-decisions",
-        query: {
-            placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
-            num_decisions_requested: MAX_DECISIONS,
-            client_ad_session_id: clientAdSessionId
-        }
+        query
     });
 
     const body = (response?.body ?? {}) as DecisionsResponse;
@@ -229,7 +300,8 @@ export async function fetchBounties(): Promise<LoadResult> {
         requestId: body.request_id,
         decisions,
         bounties,
-        clientAdSessionId
+        clientAdSessionId,
+        clientHeartbeatSessionId
     };
 }
 
@@ -244,6 +316,9 @@ export async function claimBounty(decision: AdDecision, clientAdSessionId: strin
     if (!content?.id) throw new Error("Missing Bounty creative ID");
 
     const body: Record<string, string> = { client_ad_session_id: clientAdSessionId };
+    const clientHeartbeatSessionId = await getHeartbeatSessionId();
+
+    if (clientHeartbeatSessionId) body.client_heartbeat_session_id = clientHeartbeatSessionId;
     if (decision.metadata_sealed) body.decision_metadata_sealed = decision.metadata_sealed;
     if (decision.traffic_metadata_sealed) body.traffic_metadata_sealed = decision.traffic_metadata_sealed;
 
