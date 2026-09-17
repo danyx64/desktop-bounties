@@ -1,35 +1,36 @@
 # DesktopBounties
 
-A Vencord userplugin that exposes Discord's **mobile Quest Home Bounty creatives** on desktop and gives them a dedicated desktop UI.
+A Vencord userplugin that exposes Discord's **mobile Quest Home Bounty creatives** on desktop.
 
-The plugin requests Discord's authenticated Quest decision endpoint using the mobile Quest Home placement (`placement=4`) and renders returned Bounty creatives (`creative_type=3`) inside Discord's normal Quest Home route.
+The plugin requests Discord's authenticated Quest decision endpoint using the mobile Quest Home placement (`placement=4`) and renders returned Bounty creatives (`creative_type=3`) inside Discord's Quest Home route.
 
-## Features
+## Current behavior
 
 - Adds **Bounties** directly below **Quests** in the Discord Home shortcut group
-- Uses a Discord-style target icon, hover state and selected state instead of a custom outlined button
-- Opens Bounties as a **full page** inside `/quest-home`, not as a modal
+- Mirrors the native Quests row classes and dimensions so the sidebar item follows Discord's own sizing, spacing and theme
+- Suppresses the native Quests selected state while the Bounties page is open
+- Opens Bounties as a **full page**, not a modal
 - Shows the current **Orbs balance** in the top-right corner
-- Provides separate **Available**, **In Progress**, and **Completed** views
-- Makes completed Bounties obvious with a completion overlay, check badge and green completion progress
-- Keeps successfully claimed Bounties in a local Completed history even if Discord stops returning that creative later
-- Fetches Bounties through the logged-in Discord session with Vencord's `RestAPI`
-- Shows product/advertiser information and image/video assets returned by Discord
-- Tracks watch progress from `reward_timer_seconds`
-- Watch progress advances only while the Bounty video is actually playing and the Discord window is visible and focused
-- Reuses a client ad session ID for the decision and reward flow
-- Once the required watch time is reached, sends Discord's creative reward claim request:
+- Shows **only Bounties that are still to complete**
+- Does not show a completed/history section
+- Does not show old Video Quest history
+- Requests up to 15 Bounty decisions in the current Discord response
+- Uses the Bounty's **`video_hls` full stream** for playback
+- Does **not** substitute the short `video_preview` clip when the full stream is unavailable
+- Tracks the configured `reward_timer_seconds` only while the full HLS video is actually playing, Discord is visible, and the window is focused
+- Reuses the same client ad session for the decision and claim flow
+- At the required watch time, sends Discord's creative reward claim request:
   `POST /quests/creatives/{creative_id}/claim-reward`
-- Includes the sealed decision metadata returned by Discord when claiming
+- Includes sealed decision metadata when Discord supplies it
+- Removes a Bounty from the page after Discord accepts the claim
 - Refreshes the Orbs balance after a successful claim
-- Displays Discord's actual error if the server rejects the claim, with a **Retry claim** button
-- Keeps `/bounties` as a shortcut to the dedicated page
+- Shows Discord's error and a retry button if a claim is rejected
 
-## Completion behavior
+## Full video behavior
 
-DesktopBounties does **not** fake a completed Bounty. A card is marked **Completed / Claimed on Discord** only after the creative reward claim request succeeds.
+Discord Bounty creatives expose both preview media and a `video_hls` asset. DesktopBounties intentionally uses `video_hls` as the playable video. The short preview asset is never used to advance completion progress.
 
-If Discord requires additional attribution state that is not available in the desktop session, the server may reject the request. The plugin shows that error rather than pretending the Bounty completed.
+If a Bounty is returned without a playable full HLS stream, the card stays visible with its image and reports that the full video is unavailable instead of playing a short preview as though it were the complete ad.
 
 ## Install as a Vencord userplugin
 
@@ -39,7 +40,7 @@ Clone this repository into your Vencord source tree as:
 src/userplugins/desktopBounties/
 ```
 
-The directory should contain:
+The directory contains:
 
 ```text
 src/userplugins/desktopBounties/
@@ -50,9 +51,7 @@ src/userplugins/desktopBounties/
 └── README.md
 ```
 
-Then rebuild your Vencord source build and enable **DesktopBounties** in Vencord's plugin settings.
-
-Typical update flow:
+Update and rebuild with:
 
 ```bash
 cd ~/Vencord/src/userplugins/desktopBounties
@@ -61,20 +60,14 @@ cd ../../..
 pnpm build
 ```
 
-Restart Discord after rebuilding.
+Then fully restart Discord and enable **DesktopBounties** in Vencord's plugin settings.
 
-## Usage
-
-Open Discord Home. **Bounties** appears in the same shortcut group as Friends, Nitro, Shop and Quests, directly below Quests.
-
-Click **Bounties** or run:
+You can open the page from the Home sidebar or with:
 
 ```text
 /bounties
 ```
 
-The dedicated page shows your Orbs balance, Bounty status tabs and cards. Start a video to move a Bounty into **In Progress**. Reaching the required watch time triggers the server-side claim. After Discord accepts it, the Bounty moves to **Completed**.
-
 ## Notes
 
-Discord's Bounty APIs, Quest Home modules, and response shapes are internal/unstable and may change without notice. The plugin patches the Quest Home route and the Home/DM shortcut list, so Discord client updates can require updating the patch targets.
+Discord's Bounty APIs, Quest Home modules and generated client classes are internal and may change. The plugin intentionally follows the currently shipped Discord client behavior where possible instead of inventing its own completion state.
