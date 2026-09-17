@@ -3,7 +3,7 @@
  */
 
 import { filters, mapMangledModuleLazy } from "@webpack";
-import { NavigationRouter, React } from "@webpack/common";
+import { NavigationRouter, React, UserStore, useStateFromStores } from "@webpack/common";
 
 import {
     AdDecision,
@@ -485,6 +485,11 @@ function BountyCard({
 }
 
 function BountiesPage() {
+    const currentUserId = useStateFromStores(
+        [UserStore],
+        () => UserStore.getCurrentUser()?.id ?? null
+    );
+
     const [result, setResult] = React.useState<LoadResult | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
@@ -492,6 +497,12 @@ function BountiesPage() {
     const [orbLoading, setOrbLoading] = React.useState(true);
 
     const loadOrbBalance = React.useCallback(async () => {
+        if (!currentUserId) {
+            setOrbBalance(null);
+            setOrbLoading(false);
+            return;
+        }
+
         setOrbLoading(true);
         try {
             setOrbBalance(await fetchOrbBalance());
@@ -500,9 +511,11 @@ function BountiesPage() {
         } finally {
             setOrbLoading(false);
         }
-    }, []);
+    }, [currentUserId]);
 
     const load = React.useCallback(async () => {
+        if (!currentUserId) return;
+
         setLoading(true);
         setError(null);
 
@@ -516,11 +529,28 @@ function BountiesPage() {
         }
 
         void loadOrbBalance();
-    }, [loadOrbBalance]);
+    }, [currentUserId, loadOrbBalance]);
 
+    // Discord's account switcher can keep the Quest Home React tree mounted.
+    // React to the actual UserStore change and rescan after the auth token has a
+    // brief moment to settle instead of keeping account A's empty result on B.
     React.useEffect(() => {
-        void load();
-    }, [load]);
+        setResult(null);
+        setError(null);
+        setOrbBalance(null);
+
+        if (!currentUserId) {
+            setLoading(true);
+            setOrbLoading(true);
+            return;
+        }
+
+        const timeout = window.setTimeout(() => {
+            void load();
+        }, 400);
+
+        return () => window.clearTimeout(timeout);
+    }, [currentUserId, load]);
 
     const bounties = result?.bounties ?? [];
     const clientAdSessionId = result?.clientAdSessionId ?? getAdSessionId();
@@ -550,7 +580,7 @@ function BountiesPage() {
                 <button
                     type="button"
                     className="vc-desktop-bounties-refreshButton vc-desktop-bounties-toolbarRefresh"
-                    disabled={loading}
+                    disabled={loading || !currentUserId}
                     onClick={() => void load()}
                 >
                     {loading ? "Refreshing…" : "Refresh"}
