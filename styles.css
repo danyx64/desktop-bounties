@@ -1,12 +1,14 @@
 .vc-desktop-bounties-page {
-    --vc-db-bg: var(--background-base-lowest, var(--background-primary, #111214));
-    --vc-db-surface: var(--background-base-low, var(--background-secondary, #1e1f22));
-    --vc-db-surface-raised: var(--background-base-lower, var(--background-tertiary, #2b2d31));
-    --vc-db-text: var(--text-default, var(--text-normal, #dbdee1));
-    --vc-db-strong: var(--text-strong, var(--header-primary, #f2f3f5));
-    --vc-db-muted: var(--text-muted, var(--interactive-normal, #949ba4));
+    --vc-db-bg: var(--background-base-lowest, #0f1012);
+    --vc-db-surface: var(--background-base-low, #1a1b1e);
+    --vc-db-surface-raised: var(--background-base-lower, #232428);
+    --vc-db-surface-hover: var(--background-mod-subtle, rgb(255 255 255 / 6%));
     --vc-db-border: var(--border-subtle, rgb(255 255 255 / 8%));
-    --vc-db-border-strong: var(--border-strong, rgb(255 255 255 / 14%));
+    --vc-db-border-strong: var(--border-strong, rgb(255 255 255 / 13%));
+    --vc-db-text: var(--text-default, #dbdee1);
+    --vc-db-strong: var(--text-strong, #f2f3f5);
+    --vc-db-muted: var(--text-muted, #949ba4);
+    --vc-db-faint: var(--interactive-normal, #80848e);
     --vc-db-brand: var(--brand-500, #5865f2);
     --vc-db-danger: var(--status-danger, #f23f43);
 
@@ -24,131 +26,60 @@
     box-sizing: border-box;
 }
 
-.vc-desktop-bounties-pageInner {
-    width: min(1180px, calc(100% - 64px));
-    margin: 0 auto;
-    padding: 36px 0 64px;
-}
-
-.vc-desktop-bounties-pageHeader {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-    margin-bottom: 34px;
-}
-
-.vc-desktop-bounties-headingGroup {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-
-.vc-desktop-bounties-headingIcon {
-    width: 42px;
-    height: 42px;
-    display: grid;
-    place-items: center;
-    flex: 0 0 42px;
-    border-radius: 12px;
-    background: var(--vc-db-brand);
-    color: #fff;
-}
-
-.vc-desktop-bounties-headingIcon svg {
-    width: 25px;
-    height: 25px;
-}
-
-.vc-desktop-bounties-headingText {
-    min-width: 0;
-}
-
-.vc-desktop-bounties-headingText h1 {
-    margin: 0;
-    color: var(--vc-db-strong) !important;
-    font-size: 24px;
-    font-weight: 700;
-    line-height: 1.2;
-}
-
-.vc-desktop-bounties-headingText p {
-    margin: 5px 0 0;
-    color: var(--vc-db-muted) !important;
-    font-size: 13px;
-    line-height: 1.45;
-}
-
-.vc-desktop-bounties-headerActions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 0 0 auto;
-}
-
-.vc-desktop-bounties-refreshButton,
-.vc-desktop-bounties-orbPill,
-.vc-desktop-bounties-primaryButton,
-.vc-desktop-bounties-secondaryButton {
-    min-height: 36px;
-    border: 0;
-    outline: 0;
-    border-radius: 8px;
+/* Keep the injected Home shortcut entirely native. Discord's own generated
+ * shortcut classes control size, padding, radius, hover and selected state. */
+.vc-desktop-bounties-navShell,
+.vc-desktop-bounties-navLink {
     font: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
 }
 
-.vc-desktop-bounties-refreshButton,
-.vc-desktop-bounties-secondaryButton {
-    padding: 0 14px;
-    background: var(--vc-db-surface-raised);
-    color: var(--vc-db-text);
+.vc-desktop-bounties-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--vc-db-border);
+    background: color-mix(in srgb, var(--vc-db-bg) 96%, transparent);
+    backdrop-filter: blur(12px);
 }
 
-.vc-desktop-bounties-refreshButton:hover:not(:disabled),
-.vc-desktop-bounties-secondaryButton:hover:not(:disabled) {
-    background: var(--background-mod-strong, rgb(255 255 255 / 12%));
-    color: var(--vc-db-strong);
-}
-
-.vc-desktop-bounties-refreshButton:disabled,
-.vc-desktop-bounties-secondaryButton:disabled {
-    opacity: .45;
-    cursor: not-allowed;
-}
-
-.vc-desktop-bounties-primaryButton {
-    padding: 0 14px;
-    background: var(--vc-db-brand);
-    color: #fff;
-}
-
-.vc-desktop-bounties-orbPill {
+.vc-desktop-bounties-orbCounter {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    min-height: 32px;
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    padding: 0 12px;
+    padding: 0 11px;
     border: 1px solid var(--vc-db-border);
-    border-radius: 999px;
-    background: transparent;
+    border-radius: 8px;
+    background: var(--vc-db-surface-raised);
     color: var(--vc-db-muted);
+    font: inherit;
+    cursor: pointer;
 }
 
-.vc-desktop-bounties-orbPill:hover {
-    background: var(--background-mod-subtle, rgb(255 255 255 / 6%));
+.vc-desktop-bounties-orbCounter:hover {
+    background: var(--vc-db-surface-hover);
+    border-color: var(--vc-db-border-strong);
 }
 
-.vc-desktop-bounties-orbPill strong {
-    color: var(--vc-db-strong) !important;
-    font-size: 13px;
+.vc-desktop-bounties-orbCounter strong {
+    color: var(--vc-db-strong);
+    font-size: 14px;
+    font-weight: 700;
 }
 
-.vc-desktop-bounties-orbPill span {
-    color: var(--vc-db-muted) !important;
+.vc-desktop-bounties-orbCounter span {
+    color: var(--vc-db-muted);
     font-size: 12px;
+    font-weight: 500;
 }
 
 .vc-desktop-bounties-orbIcon {
@@ -157,8 +88,18 @@
     color: var(--vc-db-brand);
 }
 
+.vc-desktop-bounties-pageInner {
+    width: min(1240px, calc(100% - 64px));
+    margin: 0 auto;
+    padding: 48px 0 64px;
+}
+
 .vc-desktop-bounties-sectionHeader {
-    margin-bottom: 16px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
 }
 
 .vc-desktop-bounties-sectionTitleRow {
@@ -167,18 +108,18 @@
     gap: 9px;
 }
 
-.vc-desktop-bounties-sectionTitleRow h2 {
+.vc-desktop-bounties-sectionTitleRow h1 {
     margin: 0;
-    color: var(--vc-db-strong) !important;
-    font-size: 18px;
+    color: var(--vc-db-strong);
+    font-size: 20px;
     font-weight: 700;
-    line-height: 1.3;
+    line-height: 1.25;
 }
 
 .vc-desktop-bounties-sectionHeader p {
-    margin: 4px 0 0;
-    color: var(--vc-db-muted) !important;
-    font-size: 12px;
+    margin: 5px 0 0;
+    color: var(--vc-db-muted);
+    font-size: 13px;
     line-height: 1.45;
 }
 
@@ -187,7 +128,7 @@
     padding: 2px 7px;
     border-radius: 999px;
     background: var(--vc-db-surface-raised);
-    color: var(--vc-db-muted) !important;
+    color: var(--vc-db-faint);
     font-size: 11px;
     font-weight: 700;
     text-align: center;
@@ -196,7 +137,7 @@
 .vc-desktop-bounties-grid,
 .vc-desktop-bounties-skeletonGrid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 16px;
 }
 
@@ -204,7 +145,7 @@
 .vc-desktop-bounties-skeletonCard {
     overflow: hidden;
     border: 1px solid var(--vc-db-border);
-    border-radius: 12px;
+    border-radius: 10px;
     background: var(--vc-db-surface);
 }
 
@@ -222,7 +163,7 @@
     width: 100%;
     aspect-ratio: 16 / 9;
     overflow: hidden;
-    background: #000;
+    background: #111214;
 }
 
 .vc-desktop-bounties-media video,
@@ -239,7 +180,7 @@
     display: grid;
     place-items: center;
     background: var(--vc-db-surface-raised);
-    color: var(--vc-db-muted);
+    color: var(--vc-db-faint);
 }
 
 .vc-desktop-bounties-mediaFallback svg {
@@ -253,23 +194,24 @@
     left: 10px;
     z-index: 2;
     padding: 5px 8px;
+    border: 1px solid rgb(255 255 255 / 10%);
     border-radius: 999px;
-    background: rgb(17 18 20 / 78%);
-    color: #fff !important;
+    background: rgb(17 18 20 / 82%);
+    color: #f2f3f5;
     font-size: 11px;
     font-weight: 700;
     backdrop-filter: blur(8px);
 }
 
 .vc-desktop-bounties-statusPill--progress {
-    background: color-mix(in srgb, var(--vc-db-brand) 78%, #111214);
+    background: color-mix(in srgb, var(--vc-db-brand) 74%, #111214);
 }
 
 .vc-desktop-bounties-body {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 15px;
+    padding: 14px;
 }
 
 .vc-desktop-bounties-titleRow {
@@ -282,30 +224,33 @@
     width: 38px;
     height: 38px;
     flex: 0 0 38px;
-    border-radius: 9px;
+    border-radius: 8px;
     object-fit: cover;
+    background: var(--vc-db-surface-raised);
 }
 
 .vc-desktop-bounties-titleText {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3px;
 }
 
 .vc-desktop-bounties-titleText strong {
     overflow: hidden;
-    color: var(--vc-db-strong) !important;
+    color: var(--vc-db-strong);
     font-size: 15px;
     font-weight: 700;
+    line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .vc-desktop-bounties-titleText span {
     overflow: hidden;
-    color: var(--vc-db-muted) !important;
+    color: var(--vc-db-muted);
     font-size: 12px;
+    line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -320,11 +265,11 @@
 }
 
 .vc-desktop-bounties-progressText span {
-    color: var(--vc-db-muted) !important;
+    color: var(--vc-db-muted);
 }
 
 .vc-desktop-bounties-progressText strong {
-    color: var(--vc-db-text) !important;
+    color: var(--vc-db-text);
     font-weight: 600;
 }
 
@@ -342,10 +287,70 @@
     transition: width 180ms linear;
 }
 
+.vc-desktop-bounties-cardFooter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 2px;
+}
+
+.vc-desktop-bounties-requirement {
+    color: var(--vc-db-faint);
+    font-size: 11px;
+}
+
+.vc-desktop-bounties-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.vc-desktop-bounties-refreshButton,
+.vc-desktop-bounties-primaryButton,
+.vc-desktop-bounties-secondaryButton {
+    min-height: 34px;
+    padding: 0 13px;
+    border: 0;
+    outline: 0;
+    border-radius: 7px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.vc-desktop-bounties-toolbarRefresh {
+    background: var(--vc-db-surface-raised);
+    color: var(--vc-db-text);
+}
+
+.vc-desktop-bounties-toolbarRefresh:hover:not(:disabled),
+.vc-desktop-bounties-secondaryButton:hover:not(:disabled) {
+    background: var(--vc-db-surface-hover);
+    color: var(--vc-db-strong);
+}
+
+.vc-desktop-bounties-secondaryButton {
+    background: var(--vc-db-surface-raised);
+    color: var(--vc-db-text);
+}
+
+.vc-desktop-bounties-primaryButton {
+    background: var(--vc-db-brand);
+    color: #fff;
+}
+
+.vc-desktop-bounties-refreshButton:disabled,
+.vc-desktop-bounties-secondaryButton:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
 .vc-desktop-bounties-infoBox,
 .vc-desktop-bounties-claimError {
     padding: 9px 10px;
-    border-radius: 8px;
+    border-radius: 7px;
     font-size: 11px;
     line-height: 1.4;
 }
@@ -356,49 +361,23 @@
     color: var(--vc-db-muted);
 }
 
-.vc-desktop-bounties-infoBox code {
-    color: var(--vc-db-text);
-}
-
 .vc-desktop-bounties-claimError {
     display: flex;
     flex-direction: column;
     gap: 3px;
     border: 1px solid color-mix(in srgb, var(--vc-db-danger) 35%, var(--vc-db-border));
     background: color-mix(in srgb, var(--vc-db-danger) 9%, var(--vc-db-surface));
-    color: var(--vc-db-text);
+    color: var(--vc-db-muted);
 }
 
 .vc-desktop-bounties-claimError strong {
-    color: var(--vc-db-danger) !important;
-}
-
-.vc-desktop-bounties-claimError span {
-    color: var(--vc-db-muted) !important;
-}
-
-.vc-desktop-bounties-cardFooter {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.vc-desktop-bounties-requirement {
-    color: var(--vc-db-muted) !important;
-    font-size: 11px;
-}
-
-.vc-desktop-bounties-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    color: var(--vc-db-danger);
 }
 
 .vc-desktop-bounties-state,
 .vc-desktop-bounties-emptyState {
     border: 1px solid var(--vc-db-border);
-    border-radius: 12px;
+    border-radius: 10px;
     background: var(--vc-db-surface);
 }
 
@@ -410,16 +389,18 @@
     padding: 14px 16px;
 }
 
-.vc-desktop-bounties-state strong {
-    color: var(--vc-db-strong) !important;
+.vc-desktop-bounties-state strong,
+.vc-desktop-bounties-emptyState h3 {
+    color: var(--vc-db-strong);
 }
 
-.vc-desktop-bounties-state span {
-    color: var(--vc-db-muted) !important;
+.vc-desktop-bounties-state span,
+.vc-desktop-bounties-emptyState p {
+    color: var(--vc-db-muted);
 }
 
 .vc-desktop-bounties-error strong {
-    color: var(--vc-db-danger) !important;
+    color: var(--vc-db-danger);
 }
 
 .vc-desktop-bounties-emptyState {
@@ -438,7 +419,7 @@
     flex: 0 0 40px;
     border-radius: 50%;
     background: var(--vc-db-surface-raised);
-    color: var(--vc-db-muted);
+    color: var(--vc-db-faint);
 }
 
 .vc-desktop-bounties-emptyIcon svg {
@@ -448,14 +429,12 @@
 
 .vc-desktop-bounties-emptyState h3 {
     margin: 0;
-    color: var(--vc-db-strong) !important;
     font-size: 14px;
     font-weight: 700;
 }
 
 .vc-desktop-bounties-emptyState p {
     margin: 4px 0 0;
-    color: var(--vc-db-muted) !important;
     font-size: 12px;
     line-height: 1.45;
 }
@@ -474,25 +453,40 @@
 
 @media (max-width: 900px) {
     .vc-desktop-bounties-pageInner {
-        width: min(100% - 32px, 1180px);
+        width: min(100% - 32px, 1240px);
+    }
+
+    .vc-desktop-bounties-grid,
+    .vc-desktop-bounties-skeletonGrid {
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .vc-desktop-bounties-toolbar {
+        padding: 0 12px;
+    }
+
+    .vc-desktop-bounties-toolbarRefresh {
+        padding: 0 10px;
+    }
+
+    .vc-desktop-bounties-pageInner {
+        width: calc(100% - 24px);
+        padding-top: 32px;
     }
 
     .vc-desktop-bounties-grid,
     .vc-desktop-bounties-skeletonGrid {
         grid-template-columns: 1fr;
     }
-}
 
-@media (max-width: 640px) {
-    .vc-desktop-bounties-pageHeader,
     .vc-desktop-bounties-cardFooter {
         align-items: stretch;
         flex-direction: column;
     }
 
-    .vc-desktop-bounties-headerActions,
     .vc-desktop-bounties-actions {
-        justify-content: flex-start;
-        flex-wrap: wrap;
+        justify-content: flex-end;
     }
 }
