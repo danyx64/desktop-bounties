@@ -57,6 +57,7 @@ const AnalyticsUtils = findByPropsLazy(
 
 const MOBILE_CLIENT_VERSION = "347.4 - rn";
 const MOBILE_CLIENT_BUILD_NUMBER = 6453;
+const MOBILE_NATIVE_BUILD_NUMBER = 347204;
 const MOBILE_RELEASE_CHANNEL = "googleRelease";
 
 export interface BountyCTA {
@@ -352,6 +353,7 @@ function getMobileSuperPropertiesBase64(): string | undefined {
             client_version: MOBILE_CLIENT_VERSION,
             release_channel: MOBILE_RELEASE_CHANNEL,
             client_build_number: MOBILE_CLIENT_BUILD_NUMBER,
+            native_build_number: MOBILE_NATIVE_BUILD_NUMBER,
             design_id: 2,
             client_event_source: null
         };
@@ -487,28 +489,30 @@ export async function fetchOrbBalance(): Promise<number | null> {
     return Number.isFinite(value) ? value : null;
 }
 
-export async function claimBounty(decision: AdDecision, clientAdSessionId: string) {
+export async function claimBounty(decision: AdDecision, _clientAdSessionId: string) {
     const content = getBountyContent(decision);
     if (!content?.id) throw new Error("Missing Bounty creative ID");
 
-    const body: Record<string, string | null> = {
-        client_ad_session_id: clientAdSessionId,
-        client_heartbeat_session_id: null,
-        decision_metadata_sealed: decision.metadata_sealed ?? null,
-        traffic_metadata_sealed: decision.traffic_metadata_sealed ?? null
-    };
-
+    // Discord mobile refreshes/reuses the native ad session again at claim time,
+    // rather than blindly reusing the id captured when the list was fetched.
+    const clientAdSessionId = getAdSessionId();
     const clientHeartbeatSessionId = await getHeartbeatSessionId();
-    if (clientHeartbeatSessionId) body.client_heartbeat_session_id = clientHeartbeatSessionId;
+
+    const body: Record<string, string | null> = {
+        decision_metadata_sealed: decision.metadata_sealed ?? null,
+        traffic_metadata_sealed: decision.traffic_metadata_sealed ?? null,
+        client_ad_session_id: clientAdSessionId,
+        client_heartbeat_session_id: clientHeartbeatSessionId ?? null
+    };
 
     const request: any = {
         url: `/quests/creatives/${content.id}/claim-reward`,
-        body
+        body,
+        rejectWithError: false
     };
     attachMobileDeliveryHeaders(request);
 
     await (RestAPI.post as any)(request);
-
     rememberClaimed(content.id);
 }
 
