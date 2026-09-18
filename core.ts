@@ -17,13 +17,15 @@ export const BOUNTIES_ROUTE = `/quest-home?${BOUNTIES_ROUTE_PARAM}=1`;
 
 const AD_SESSION_STORAGE_KEY = "vc-desktop-bounties-ad-session-v1";
 const PROGRESS_STORAGE_KEY = "vc-desktop-bounties-progress-v1";
-const CLAIMED_STORAGE_KEY = "vc-desktop-bounties-claimed-v1";
+const LEGACY_CLAIMED_STORAGE_KEY = "vc-desktop-bounties-claimed-v1";
 const AD_SESSION_IDLE_MS = 30 * 60 * 1000;
 const AD_SESSION_MAX_MS = 12 * 60 * 60 * 1000;
+const RECENTLY_CLAIMED_TTL_MS = 10 * 60 * 1000;
 
 let legacyStateCleared = false;
 const bountyFetchInFlightByUser = new Map<string, Promise<LoadResult>>();
 const bountyCacheByUser = new Map<string, { expiresAt: number; result: LoadResult; }>();
+const recentlyClaimedByUser = new Map<string, Map<string, number>>();
 
 const DEFAULT_BOUNTY_CACHE_MS = 30_000;
 const MIN_BOUNTY_CACHE_MS = 5_000;
@@ -32,7 +34,7 @@ const MAX_BOUNTY_CACHE_MS = 5 * 60_000;
 const LEGACY_GLOBAL_KEYS = [
     AD_SESSION_STORAGE_KEY,
     PROGRESS_STORAGE_KEY,
-    CLAIMED_STORAGE_KEY,
+    LEGACY_CLAIMED_STORAGE_KEY,
     "vc-desktop-bounties-claimed-snapshots-v1",
     "vc-desktop-bounties-seen-v1",
     "vc-desktop-bounties-video-quest-history-v1"
@@ -179,6 +181,15 @@ function clearLegacyGlobalStateOnce() {
 
     try {
         for (const key of LEGACY_GLOBAL_KEYS) localStorage.removeItem(key);
+
+        // Older builds persisted claimed IDs indefinitely. They are now only
+        // kept briefly in memory so Discord remains the authoritative source.
+        for (let index = localStorage.length - 1; index >= 0; index--) {
+            const key = localStorage.key(index);
+            if (key?.startsWith(`${LEGACY_CLAIMED_STORAGE_KEY}:`)) {
+                localStorage.removeItem(key);
+            }
+        }
     } catch { }
 }
 
@@ -275,21 +286,28 @@ export function saveProgress(userId: string, id: string, seconds: number) {
     } catch { }
 }
 
-function readClaimedIds(userId: string): Set<string> {
-    try {
-        const ids = JSON.parse(localStorage.getItem(scopedStorageKey(CLAIMED_STORAGE_KEY, userId)) ?? "[]") as string[];
-        return new Set(Array.isArray(ids) ? ids : []);
-    } catch {
-        return new Set();
+function isRecentlyClaimed(userId: string, id: string): boolean {
+    const claims = recentlyClaimedByUser.get(userId);
+    if (!claims) return false;
+
+    const now = Date.now();
+    for (const [creativeId, claimedAt] of claims) {
+        if (now - claimedAt >= RECENTLY_CLAIMED_TTL_MS) claims.delete(creativeId);
     }
+
+    if (claims.size === 0) recentlyClaimedByUser.delete(userId);
+    return claims.has(id);
 }
 
 export function rememberClaimed(userId: string, id: string) {
-    try {
-        const ids = readClaimedIds(userId);
-        ids.add(id);
-        localStorage.setItem(scopedStorageKey(CLAIMED_STORAGE_KEY, userId), JSON.stringify([...ids]));
+    let claims = recentlyClaimedByUser.get(userId);
+    if (!claims) {
+        claims = new Map();
+        recentlyClaimedByUser.set(userId, claims);
+    }
+    claims.set(id, Date.now());
 
+    try {
         const progress = readProgress(userId);
         if (id in progress) {
             delete progress[id];
@@ -356,7 +374,6 @@ export function getBountyContent(decision: AdDecision): BountyCreativeContent | 
 
 function filterBounties(decisions: AdDecision[], userId: string): AdDecision[] {
     const seen = new Set<string>();
-    const claimed = readClaimedIds(userId);
     const bounties: AdDecision[] = [];
 
     for (const decision of decisions) {
@@ -364,7 +381,7 @@ function filterBounties(decisions: AdDecision[], userId: string): AdDecision[] {
         if (
             getCreativeType(decision) !== BOUNTY_CREATIVE_TYPE
             || content?.id == null
-            || claimed.has(content.id)
+            || isRecentlyClaimed(userId, content.id)
             || seen.has(content.id)
         ) continue;
 
