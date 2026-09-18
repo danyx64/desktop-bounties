@@ -5,7 +5,7 @@
  */
 
 import { filters, findByPropsLazy, findStoreLazy, mapMangledModuleLazy } from "@webpack";
-import { NavigationRouter, RestAPI, UserStore } from "@webpack/common";
+import { LocaleStore, NavigationRouter, RestAPI, UserStore } from "@webpack/common";
 
 // Current Discord mobile Quest Home fetches Bounties through VIDEO_MODAL_MOBILE (5).
 // QUEST_HOME_MOBILE_CAROUSEL (4) still exists in the enum, but the current hook does not use it for Bounty delivery.
@@ -289,6 +289,12 @@ export function rememberClaimed(userId: string, id: string) {
         const ids = readClaimedIds(userId);
         ids.add(id);
         localStorage.setItem(scopedStorageKey(CLAIMED_STORAGE_KEY, userId), JSON.stringify([...ids]));
+
+        const progress = readProgress(userId);
+        if (id in progress) {
+            delete progress[id];
+            localStorage.setItem(scopedStorageKey(PROGRESS_STORAGE_KEY, userId), JSON.stringify(progress));
+        }
     } catch { }
 }
 
@@ -413,7 +419,7 @@ function getMobileSuperPropertiesBase64(): string | undefined {
             os: "Android",
             browser: "Discord Android",
             device: "Android",
-            system_locale: navigator.language || "en-US",
+            system_locale: LocaleStore.locale || navigator.language || "en-US",
             client_version: MOBILE_CLIENT_VERSION,
             release_channel: MOBILE_RELEASE_CHANNEL,
             client_build_number: MOBILE_CLIENT_BUILD_NUMBER,
@@ -547,24 +553,41 @@ export function invalidateBountyCache(userId: string) {
     bountyCacheByUser.delete(userId);
 }
 
+function refreshFilteredResult(result: LoadResult, userId: string): LoadResult {
+    const bounties = filterBounties(result.decisions, userId);
+
+    if (bounties === result.bounties) return result;
+
+    return {
+        ...result,
+        bounties,
+        source: bounties.length > 0 ? "get-decisions" : "none"
+    };
+}
+
 export function fetchBounties(userId: string, force = false): Promise<LoadResult> {
     assertCurrentUser(userId);
 
     if (!force) {
         const cached = bountyCacheByUser.get(userId);
-        if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.result);
+        if (cached && cached.expiresAt > Date.now()) {
+            const fresh = refreshFilteredResult(cached.result, userId);
+            if (fresh !== cached.result) cached.result = fresh;
+            return Promise.resolve(fresh);
+        }
     }
 
     const existing = bountyFetchInFlightByUser.get(userId);
-    if (existing) return existing;
+    if (existing) return existing.then(result => refreshFilteredResult(result, userId));
 
     const request = performBountyFetch(userId)
         .then(result => {
+            const fresh = refreshFilteredResult(result, userId);
             bountyCacheByUser.set(userId, {
-                expiresAt: Date.now() + getBountyCacheDuration(result.decisions),
-                result
+                expiresAt: Date.now() + getBountyCacheDuration(fresh.decisions),
+                result: fresh
             });
-            return result;
+            return fresh;
         })
         .finally(() => {
             if (bountyFetchInFlightByUser.get(userId) === request) {
