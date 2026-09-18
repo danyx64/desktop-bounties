@@ -15,6 +15,9 @@ const CLAIMED_STORAGE_KEY = "vc-desktop-bounties-claimed-v1";
 const AD_SESSION_IDLE_MS = 30 * 60 * 1000;
 const AD_SESSION_MAX_MS = 12 * 60 * 60 * 1000;
 
+let legacyStateCleared = false;
+let bountyFetchInFlight: Promise<LoadResult> | null = null;
+
 const LEGACY_GLOBAL_KEYS = [
     AD_SESSION_STORAGE_KEY,
     PROGRESS_STORAGE_KEY,
@@ -146,7 +149,10 @@ function scopedStorageKey(base: string): string {
     return `${base}:${currentUserId()}`;
 }
 
-function clearLegacyGlobalState() {
+function clearLegacyGlobalStateOnce() {
+    if (legacyStateCleared) return;
+    legacyStateCleared = true;
+
     try {
         for (const key of LEGACY_GLOBAL_KEYS) localStorage.removeItem(key);
     } catch { }
@@ -321,12 +327,23 @@ export function getBountyContent(decision: AdDecision): BountyCreativeContent | 
 }
 
 function filterBounties(decisions: AdDecision[]): AdDecision[] {
-    return decisions.filter(decision => {
+    const seen = new Set<string>();
+    const bounties: AdDecision[] = [];
+
+    for (const decision of decisions) {
         const content = getBountyContent(decision);
-        return getCreativeType(decision) === BOUNTY_CREATIVE_TYPE
-            && content != null
-            && !isLocallyClaimed(content.id);
-    });
+        if (
+            getCreativeType(decision) !== BOUNTY_CREATIVE_TYPE
+            || content?.id == null
+            || isLocallyClaimed(content.id)
+            || seen.has(content.id)
+        ) continue;
+
+        seen.add(content.id);
+        bounties.push(decision);
+    }
+
+    return bounties;
 }
 
 function makeRequestContext(connectionType: unknown): Record<string, unknown> | undefined {
@@ -433,8 +450,8 @@ function scanAttempt(decisions: AdDecision[]): ScanAttempt {
     };
 }
 
-export async function fetchBounties(): Promise<LoadResult> {
-    clearLegacyGlobalState();
+async function performBountyFetch(): Promise<LoadResult> {
+    clearLegacyGlobalStateOnce();
 
     const clientAdSessionId = getAdSessionId();
     const clientHeartbeatSessionId = await getHeartbeatSessionId();
@@ -446,13 +463,9 @@ export async function fetchBounties(): Promise<LoadResult> {
         connectionType
     };
 
-    // Match the current Discord Android Quest Home Bounty flow:
-    // GET /quests/get-decisions
-    // placement=VIDEO_MODAL_MOBILE (5)
-    // client_ad_session_id=<native ad session>
-    // client_heartbeat_session_id=<native heartbeat session>
-    // num_decisions_requested=5
-    // context.connection_type=<NetworkStore type>
+    // Match the current Discord Android Quest Home Bounty flow exactly:
+    // one GET /quests/get-decisions request, placement VIDEO_MODAL_MOBILE (5),
+    // five requested decisions, native ad/heartbeat sessions and network context.
     const response = await fetchQuestHomeBountyDecisions(context);
     const bounties = filterBounties(response.decisions);
     const attempts = [scanAttempt(response.decisions)];
@@ -465,7 +478,6 @@ export async function fetchBounties(): Promise<LoadResult> {
         requested: MAX_DECISIONS,
         returned: response.decisions.length,
         bounties: bounties.length,
-        mobileIdentityHeader: Boolean(getMobileSuperPropertiesBase64()),
         hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
         connectionType,
         creativeTypes: response.decisions.map(decision => getCreativeType(decision) ?? null)
@@ -480,6 +492,19 @@ export async function fetchBounties(): Promise<LoadResult> {
         source: bounties.length > 0 ? "get-decisions" : "none",
         attempts
     };
+}
+
+export function fetchBounties(): Promise<LoadResult> {
+    // Focus, visibility and route events can arrive together. Coalesce them into
+    // the same network request so the client never asks Discord for duplicate
+    // decision batches while a scan is already running.
+    if (bountyFetchInFlight) return bountyFetchInFlight;
+
+    bountyFetchInFlight = performBountyFetch().finally(() => {
+        bountyFetchInFlight = null;
+    });
+
+    return bountyFetchInFlight;
 }
 
 export async function fetchOrbBalance(): Promise<number | null> {
