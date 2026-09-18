@@ -3,7 +3,7 @@
  */
 
 import { filters, findComponentByCodeLazy, mapMangledModuleLazy } from "@webpack";
-import { NavigationRouter, React, UserStore, useStateFromStores } from "@webpack/common";
+import { LocaleStore, NavigationRouter, React, UserStore, useStateFromStores } from "@webpack/common";
 
 import {
     AdDecision,
@@ -21,6 +21,7 @@ import {
     safeExternalUrl,
     saveProgress
 } from "./core";
+import { formatNumber, formatPercent, msg } from "./i18n";
 
 type ClaimState = "idle" | "claiming" | "error";
 
@@ -133,23 +134,53 @@ const NativeOrbBalanceMenu = findComponentByCodeLazy<any>(
 function FullBountyVideo({
     hlsUrl,
     poster,
+    initialTime,
     onAvailable,
     onUnavailable,
+    onProgress,
     onPlay,
     onPause,
     onEnded
 }: {
     hlsUrl: string;
     poster?: string;
+    initialTime: number;
     onAvailable: () => void;
     onUnavailable: () => void;
+    onProgress: (currentTime: number, duration: number) => void;
     onPlay: () => void;
     onPause: () => void;
-    onEnded: () => void;
+    onEnded: (currentTime: number, duration: number) => void;
 }) {
     const videoRef = React.useRef<HTMLVideoElement>(null);
+    const [activated, setActivated] = React.useState(false);
+
+    // With up to five Bounties on the page there is no reason to initialize
+    // every HLS stream immediately. Start the player only when it is near the
+    // viewport, which avoids unnecessary manifests, buffers and decoders.
+    React.useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        if (typeof IntersectionObserver === "undefined") {
+            setActivated(true);
+            return;
+        }
+
+        const observer = new IntersectionObserver(entries => {
+            if (entries.some(entry => entry.isIntersecting)) {
+                setActivated(true);
+                observer.disconnect();
+            }
+        }, { rootMargin: "320px" });
+
+        observer.observe(video);
+        return () => observer.disconnect();
+    }, []);
 
     React.useEffect(() => {
+        if (!activated) return;
+
         const video = videoRef.current;
         if (!video) return;
 
@@ -183,9 +214,10 @@ function FullBountyVideo({
 
                 hls = new Hls({
                     startLevel: -1,
-                    startFragPrefetch: true,
-                    backBufferLength: 90,
-                    maxBufferLength: 90
+                    startFragPrefetch: false,
+                    backBufferLength: 30,
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 60
                 });
 
                 hls.loadSource(hlsUrl);
@@ -211,7 +243,10 @@ function FullBountyVideo({
             try { hls?.destroy?.(); } catch { }
             cleanupVideo();
         };
-    }, [hlsUrl]);
+    }, [activated, hlsUrl]);
+
+    const durationOf = (video: HTMLVideoElement) =>
+        Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
 
     return (
         <video
@@ -220,14 +255,29 @@ function FullBountyVideo({
             playsInline
             controls
             preload="metadata"
+            onLoadedMetadata={event => {
+                const video = event.currentTarget;
+                const duration = durationOf(video);
+                if (initialTime > 0 && duration > 0) {
+                    video.currentTime = Math.min(initialTime, Math.max(0, duration - 0.25));
+                }
+            }}
+            onTimeUpdate={event => {
+                const video = event.currentTarget;
+                onProgress(video.currentTime, durationOf(video));
+            }}
             onPlay={onPlay}
             onPause={onPause}
-            onEnded={onEnded}
+            onEnded={event => {
+                const video = event.currentTarget;
+                onEnded(video.currentTime, durationOf(video));
+            }}
         />
     );
 }
 
 export function BountiesNavItem() {
+    const locale = useStateFromStores([LocaleStore], () => LocaleStore.locale || "en-US");
     const [active, setActive] = React.useState(isBountiesRoute);
     const [nativeClasses, setNativeClasses] = React.useState<NativeNavClasses>(FALLBACK_NAV_CLASSES);
 
@@ -274,7 +324,7 @@ export function BountiesNavItem() {
                             </div>
                             <div className={nativeClasses.content}>
                                 <div className={nativeClasses.nameAndDecorators}>
-                                    <div className={nativeClasses.name}>Bounties</div>
+                                    <div className={nativeClasses.name}>{msg("navBounties", {}, locale)}</div>
                                 </div>
                             </div>
                         </div>
@@ -287,9 +337,11 @@ export function BountiesNavItem() {
 
 function BountyCard({
     decision,
+    locale,
     onClaimed
 }: {
     decision: AdDecision;
+    locale: string;
     onClaimed: (id: string) => void;
 }) {
     const content = getBountyContent(decision);
@@ -300,19 +352,20 @@ function BountyCard({
     const icon = mediaUrl(content.product_icon);
     const ctaUrl = safeExternalUrl(content.cta?.url);
     const targetSeconds = Math.max(1, content.reward_timer_seconds ?? 15);
+    const initialProgress = Math.min(targetSeconds, getSavedProgress(content.id));
 
-    const [watchedSeconds, setWatchedSeconds] = React.useState(() =>
-        Math.min(targetSeconds, getSavedProgress(content.id))
-    );
+    // Discord mobile bases Bounty completion on the maximum playback timestamp,
+    // not on a separate wall-clock interval. Mirroring that behavior is both
+    // more accurate and substantially cheaper than polling four times a second.
+    const [maxVideoProgressSeconds, setMaxVideoProgressSeconds] = React.useState(initialProgress);
     const [claimState, setClaimState] = React.useState<ClaimState>("idle");
     const [claimError, setClaimError] = React.useState<string | null>(null);
     const [videoAvailable, setVideoAvailable] = React.useState(Boolean(fullHls));
-    const [isPlaying, setIsPlaying] = React.useState(false);
 
-    const isPlayingRef = React.useRef(false);
-    const lastTickRef = React.useRef<number | null>(null);
-    const wholeSeconds = Math.floor(watchedSeconds);
-    const progressPercent = Math.min(100, Math.round((watchedSeconds / targetSeconds) * 100));
+    const wholeSeconds = Math.floor(maxVideoProgressSeconds);
+    const progressPercent = Math.min(100, Math.round((maxVideoProgressSeconds / targetSeconds) * 100));
+    const localizedSeconds = formatNumber(targetSeconds, locale);
+    const localizedPercent = formatPercent(progressPercent, locale);
 
     const doClaim = React.useCallback(async () => {
         if (claimState === "claiming") return;
@@ -335,47 +388,30 @@ function BountyCard({
     }, [content.id, wholeSeconds]);
 
     React.useEffect(() => {
-        const interval = window.setInterval(() => {
-            const now = performance.now();
-
-            if (
-                !fullHls
-                || !videoAvailable
-                || !isPlayingRef.current
-                || document.visibilityState !== "visible"
-                || !document.hasFocus()
-                || claimState === "claiming"
-            ) {
-                lastTickRef.current = now;
-                return;
-            }
-
-            const previous = lastTickRef.current ?? now;
-            lastTickRef.current = now;
-            const deltaSeconds = Math.min(0.75, Math.max(0, (now - previous) / 1000));
-
-            if (deltaSeconds > 0) {
-                setWatchedSeconds(current => Math.min(targetSeconds, current + deltaSeconds));
-            }
-        }, 250);
-
-        return () => window.clearInterval(interval);
-    }, [fullHls, videoAvailable, targetSeconds, claimState]);
-
-    React.useEffect(() => {
-        if (watchedSeconds >= targetSeconds && claimState === "idle" && fullHls && videoAvailable) {
+        if (
+            maxVideoProgressSeconds >= targetSeconds
+            && claimState === "idle"
+            && fullHls
+            && videoAvailable
+        ) {
             void doClaim();
         }
-    }, [watchedSeconds, targetSeconds, claimState, fullHls, videoAvailable, doClaim]);
+    }, [maxVideoProgressSeconds, targetSeconds, claimState, fullHls, videoAvailable, doClaim]);
+
+    const handleProgress = React.useCallback((currentTime: number) => {
+        if (document.visibilityState !== "visible" || !document.hasFocus()) return;
+
+        setMaxVideoProgressSeconds(current =>
+            Math.min(targetSeconds, Math.max(current, currentTime))
+        );
+    }, [targetSeconds]);
 
     const statusText = (() => {
-        if (!fullHls || !videoAvailable) return "Full video unavailable";
-        if (claimState === "claiming") return "Watch complete — claiming reward…";
-        if (claimState === "error") return "Watch complete — retry the claim";
-        if (watchedSeconds >= targetSeconds) return "Watch complete — ready to claim";
-        if (isPlaying) return `${wholeSeconds}s of ${targetSeconds}s watched`;
-        if (wholeSeconds > 0) return `${wholeSeconds}s of ${targetSeconds}s — resume video`;
-        return `Watch ${targetSeconds}s to complete`;
+        if (!fullHls || !videoAvailable) return msg("fullVideoUnavailable", {}, locale);
+        if (claimState === "claiming") return msg("claimingReward", {}, locale);
+        if (claimState === "error") return msg("retryClaimStatus", {}, locale);
+        if (maxVideoProgressSeconds >= targetSeconds) return msg("readyToClaim", {}, locale);
+        return msg("watchToComplete", { seconds: localizedSeconds }, locale);
     })();
 
     return (
@@ -385,82 +421,75 @@ function BountyCard({
                     <FullBountyVideo
                         hlsUrl={fullHls}
                         poster={image}
+                        initialTime={initialProgress}
                         onAvailable={() => setVideoAvailable(true)}
-                        onUnavailable={() => {
-                            isPlayingRef.current = false;
-                            setIsPlaying(false);
-                            setVideoAvailable(false);
-                        }}
-                        onPlay={() => {
-                            isPlayingRef.current = true;
-                            setIsPlaying(true);
-                            lastTickRef.current = performance.now();
-                        }}
-                        onPause={() => {
-                            isPlayingRef.current = false;
-                            setIsPlaying(false);
-                            lastTickRef.current = null;
-                        }}
-                        onEnded={() => {
-                            isPlayingRef.current = false;
-                            setIsPlaying(false);
-                            lastTickRef.current = null;
+                        onUnavailable={() => setVideoAvailable(false)}
+                        onProgress={handleProgress}
+                        onPlay={() => undefined}
+                        onPause={() => undefined}
+                        onEnded={(currentTime, duration) => {
+                            const completedTime = Math.max(currentTime, duration > 0 ? duration : currentTime);
+                            setMaxVideoProgressSeconds(Math.min(targetSeconds, Math.max(targetSeconds, completedTime)));
                         }}
                     />
                 ) : image ? (
-                    <img src={image} alt="" />
+                    <img src={image} alt="" loading="lazy" />
                 ) : (
                     <div className="vc-desktop-bounties-mediaFallback"><BountyIcon /></div>
                 )}
 
                 <span className={`vc-desktop-bounties-statusPill${wholeSeconds > 0 ? " vc-desktop-bounties-statusPill--progress" : ""}`}>
-                    {wholeSeconds > 0 ? "In progress" : "Available"}
+                    {msg(wholeSeconds > 0 ? "statusProgress" : "statusAvailable", {}, locale)}
                 </span>
             </div>
 
             <div className="vc-desktop-bounties-body">
-                <div className="vc-desktop-bounties-titleRow">
-                    {icon && <img className="vc-desktop-bounties-icon" src={icon} alt="" />}
-                    <div className="vc-desktop-bounties-titleText">
-                        <strong>{content.product_name || content.advertiser_name || "Bounty"}</strong>
-                        {content.advertiser_name && content.product_name && <span>Promoted by {content.advertiser_name}</span>}
+                <div className="vc-desktop-bounties-progressBlock">
+                    <div className="vc-desktop-bounties-progressText">
+                        <span>{statusText}</span>
+                        <strong>{localizedPercent}</strong>
+                    </div>
+
+                    <div
+                        className="vc-desktop-bounties-progress"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={progressPercent}
+                        aria-valuetext={localizedPercent}
+                    >
+                        <div style={{ width: `${progressPercent}%` }} />
                     </div>
                 </div>
 
-                <div className="vc-desktop-bounties-progressText">
-                    <span>{statusText}</span>
-                    <strong>{progressPercent}%</strong>
-                </div>
-
-                <div
-                    className="vc-desktop-bounties-progress"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={progressPercent}
-                >
-                    <div style={{ width: `${progressPercent}%` }} />
+                <div className="vc-desktop-bounties-titleRow">
+                    {icon && <img className="vc-desktop-bounties-icon" src={icon} alt="" loading="lazy" />}
+                    <div className="vc-desktop-bounties-titleText">
+                        <strong>{content.product_name || content.advertiser_name || msg("bountyFallback", {}, locale)}</strong>
+                        {content.advertiser_name && content.product_name && (
+                            <span>{msg("promotedBy", { advertiser: content.advertiser_name }, locale)}</span>
+                        )}
+                    </div>
                 </div>
 
                 {(!fullHls || !videoAvailable) && (
                     <div className="vc-desktop-bounties-infoBox">
-                        Discord did not provide a playable full HLS stream for this Bounty. The short preview is not used.
+                        {msg("fullVideoInfo", {}, locale)}
                     </div>
                 )}
 
                 {claimError && (
                     <div className="vc-desktop-bounties-claimError">
-                        <strong>Discord did not accept the claim.</strong>
+                        <strong>{msg("claimRejected", {}, locale)}</strong>
                         <span>{claimError}</span>
                     </div>
                 )}
 
                 <div className="vc-desktop-bounties-cardFooter">
-                    <span className="vc-desktop-bounties-requirement">{targetSeconds}s required</span>
                     <div className="vc-desktop-bounties-actions">
-                        {claimState === "error" && watchedSeconds >= targetSeconds && (
+                        {claimState === "error" && maxVideoProgressSeconds >= targetSeconds && (
                             <button className="vc-desktop-bounties-primaryButton" onClick={() => void doClaim()}>
-                                Retry claim
+                                {msg("retryClaim", {}, locale)}
                             </button>
                         )}
                         <button
@@ -468,7 +497,7 @@ function BountyCard({
                             disabled={!ctaUrl}
                             onClick={() => openExternal(ctaUrl)}
                         >
-                            {content.cta?.button_label || "View"}
+                            {content.cta?.button_label || msg("view", {}, locale)}
                         </button>
                     </div>
                 </div>
@@ -478,6 +507,7 @@ function BountyCard({
 }
 
 function BountiesPage() {
+    const locale = useStateFromStores([LocaleStore], () => LocaleStore.locale || "en-US");
     const currentUserId = useStateFromStores(
         [UserStore],
         () => UserStore.getCurrentUser()?.id ?? null
@@ -567,31 +597,29 @@ function BountiesPage() {
 
     return (
         <div className="vc-desktop-bounties-page">
-            <div className="vc-desktop-bounties-toolbar">
-                <div className="vc-desktop-bounties-nativeOrb">
-                    <NativeOrbBalanceMenu
-                        showNotificationBadge={false}
-                        ctaText="Open Orbs"
-                        ctaOnClick={() => NavigationRouter.transitionTo("/shop?tab=orbs")}
-                    />
-                </div>
-            </div>
-
             <main className="vc-desktop-bounties-pageInner">
                 <section className="vc-desktop-bounties-section">
                     <div className="vc-desktop-bounties-sectionHeader">
-                        <div>
+                        <div className="vc-desktop-bounties-headingCopy">
                             <div className="vc-desktop-bounties-sectionTitleRow">
-                                <h1>Available Bounties</h1>
-                                <span className="vc-desktop-bounties-sectionCount">{bounties.length}</span>
+                                <h1>{msg("titleAvailable", {}, locale)}</h1>
+                                <span className="vc-desktop-bounties-sectionCount">{formatNumber(bounties.length, locale)}</span>
                             </div>
-                            <p>Sponsored videos still available to complete on your Discord account.</p>
+                            <p>{msg("subtitleAvailable", {}, locale)}</p>
+                        </div>
+
+                        <div className="vc-desktop-bounties-nativeOrb">
+                            <NativeOrbBalanceMenu
+                                showNotificationBadge={false}
+                                ctaText={msg("openOrbs", {}, locale)}
+                                ctaOnClick={() => NavigationRouter.transitionTo("/shop?tab=orbs")}
+                            />
                         </div>
                     </div>
 
                     {error && (
                         <div className="vc-desktop-bounties-state vc-desktop-bounties-error">
-                            <strong>Could not load Bounties</strong>
+                            <strong>{msg("loadErrorTitle", {}, locale)}</strong>
                             <span>{error}</span>
                         </div>
                     )}
@@ -608,6 +636,7 @@ function BountiesPage() {
                                 <BountyCard
                                     key={getBountyContent(decision)?.id ?? index}
                                     decision={decision}
+                                    locale={locale}
                                     onClaimed={handleClaimed}
                                 />
                             ))}
@@ -616,8 +645,8 @@ function BountiesPage() {
                         <div className="vc-desktop-bounties-emptyState">
                             <div className="vc-desktop-bounties-emptyIcon"><BountyIcon /></div>
                             <div>
-                                <h3>No Bounties available</h3>
-                                <p>Discord is not currently serving any uncompleted Bounties to this account.</p>
+                                <h3>{msg("emptyTitle", {}, locale)}</h3>
+                                <p>{msg("emptyBody", {}, locale)}</p>
                             </div>
                         </div>
                     )}
