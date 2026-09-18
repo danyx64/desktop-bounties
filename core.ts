@@ -1,7 +1,9 @@
 import { filters, findByPropsLazy, findStoreLazy, mapMangledModuleLazy } from "@webpack";
 import { NavigationRouter, RestAPI, UserStore } from "@webpack/common";
 
-export const QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT = 4;
+// Current Discord mobile Quest Home fetches Bounties through VIDEO_MODAL_MOBILE (5).
+// QUEST_HOME_MOBILE_CAROUSEL (4) still exists in the enum, but the current hook does not use it for Bounty delivery.
+export const BOUNTY_VIDEO_MODAL_MOBILE_PLACEMENT = 5;
 export const BOUNTY_CREATIVE_TYPE = 3;
 export const MAX_DECISIONS = 5;
 export const BOUNTIES_ROUTE_PARAM = "vc_bounties";
@@ -44,9 +46,6 @@ const NetworkStore = findStoreLazy("NetworkStore") as {
     getType?: () => unknown;
 };
 
-const GuildStore = findStoreLazy("GuildStore") as {
-    getGuilds?: () => Record<string, unknown>;
-};
 
 const AnalyticsUtils = findByPropsLazy(
     "getSuperProperties",
@@ -110,8 +109,7 @@ interface DecisionsResponse {
 }
 
 export interface ScanAttempt {
-    endpoint: "/quests/get-decisions" | "/quests/decision";
-    visibleGuildIds: boolean;
+    endpoint: "/quests/get-decisions";
     returned: number;
     bountyCount: number;
     creativeTypes: Array<number | null>;
@@ -123,7 +121,7 @@ export interface LoadResult {
     bounties: AdDecision[];
     clientAdSessionId: string;
     clientHeartbeatSessionId?: string;
-    source: "get-decisions" | "quests-decision" | "none";
+    source: "get-decisions" | "none";
     attempts: ScanAttempt[];
 }
 
@@ -221,14 +219,6 @@ function getConnectionType(): unknown {
         return NetworkStore.getType?.();
     } catch {
         return undefined;
-    }
-}
-
-function getGuildIds(): string[] {
-    try {
-        return Object.keys(GuildStore.getGuilds?.() ?? {}).slice(0, 50);
-    } catch {
-        return [];
     }
 }
 
@@ -402,7 +392,7 @@ async function fetchQuestHomeBountyDecisions(context: RequestContext): Promise<{
     decisions: AdDecision[];
 }> {
     const query: Record<string, string | number> = {
-        placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
+        placement: BOUNTY_VIDEO_MODAL_MOBILE_PLACEMENT,
         client_ad_session_id: context.clientAdSessionId,
         num_decisions_requested: MAX_DECISIONS
     };
@@ -430,60 +420,12 @@ async function fetchQuestHomeBountyDecisions(context: RequestContext): Promise<{
     };
 }
 
-async function fetchSingleQuestDecision(
-    context: RequestContext,
-    visibleGuildIds?: string[]
-): Promise<{
-    requestId?: string;
-    decision: AdDecision | null;
-}> {
-    const params = new URLSearchParams({
-        placement: String(QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT)
-    });
-
-    if (context.clientHeartbeatSessionId) {
-        params.append("client_heartbeat_session_id", context.clientHeartbeatSessionId);
-    }
-
-    params.append("client_ad_session_id", context.clientAdSessionId);
-
-    for (const guildId of visibleGuildIds ?? []) {
-        params.append("visible_guild_ids", guildId);
-    }
-
-    const request: any = {
-        url: `/quests/decision?${params.toString()}`,
-        rejectWithError: false
-    };
-
-    const requestContext = makeRequestContext(context.connectionType);
-    if (requestContext) request.context = requestContext;
-    attachMobileDeliveryHeaders(request);
-
-    const response = await (RestAPI.get as any)(request);
-    const body = response?.body;
-
-    if (body == null || typeof body !== "object") {
-        return { decision: null };
-    }
-
-    return {
-        requestId: body.request_id != null ? String(body.request_id) : undefined,
-        decision: body as AdDecision
-    };
-}
-
-function scanAttempt(
-    endpoint: ScanAttempt["endpoint"],
-    decisions: AdDecision[],
-    visibleGuildIds: boolean
-): ScanAttempt {
+function scanAttempt(decisions: AdDecision[]): ScanAttempt {
     const bounties = filterBounties(decisions);
 
     return {
-        endpoint,
-        visibleGuildIds,
-        returned: decisions.filter(decision => decision.creative != null).length,
+        endpoint: "/quests/get-decisions",
+        returned: decisions.length,
         bountyCount: bounties.length,
         creativeTypes: decisions.map(decision => getCreativeType(decision) ?? null)
     };
@@ -502,115 +444,38 @@ export async function fetchBounties(): Promise<LoadResult> {
         connectionType
     };
 
-    const attempts: ScanAttempt[] = [];
-
-    // This is the exact Quest Home Bounty endpoint used by Discord mobile.
-    const multi = await fetchQuestHomeBountyDecisions(context);
-    const multiBounties = filterBounties(multi.decisions);
-    attempts.push(scanAttempt("/quests/get-decisions", multi.decisions, false));
-
-    if (multiBounties.length > 0) {
-        console.info("[DesktopBounties] scan result", {
-            userId: currentUserId(),
-            placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
-            source: "get-decisions",
-            mobileIdentityHeader: Boolean(getMobileSuperPropertiesBase64()),
-            hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
-            connectionType,
-            attempts
-        });
-
-        return {
-            requestId: multi.requestId,
-            decisions: multi.decisions,
-            bounties: multiBounties,
-            clientAdSessionId,
-            clientHeartbeatSessionId,
-            source: "get-decisions",
-            attempts
-        };
-    }
-
-    // Desktop's QuestActionCreators also uses /quests/decision and explicitly
-    // supports BOUNTY creatives. Try the native desktop delivery path as a
-    // fallback when the mobile carousel endpoint returns no Bounties.
-    const single = await fetchSingleQuestDecision(context);
-    const singleDecisions = single.decision ? [single.decision] : [];
-    const singleBounties = filterBounties(singleDecisions);
-    attempts.push(scanAttempt("/quests/decision", singleDecisions, false));
-
-    if (singleBounties.length > 0) {
-        console.info("[DesktopBounties] scan result", {
-            userId: currentUserId(),
-            placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
-            source: "quests-decision",
-            mobileIdentityHeader: Boolean(getMobileSuperPropertiesBase64()),
-            hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
-            connectionType,
-            attempts
-        });
-
-        return {
-            requestId: single.requestId,
-            decisions: singleDecisions,
-            bounties: singleBounties,
-            clientAdSessionId,
-            clientHeartbeatSessionId,
-            source: "quests-decision",
-            attempts
-        };
-    }
-
-    // Discord conditionally includes visible_guild_ids in /quests/decision for
-    // less-personalized delivery. Try that legitimate request shape as a final
-    // fallback rather than spoofing mobile client identity or account targeting.
-    const guildIds = getGuildIds();
-    if (guildIds.length > 0) {
-        const singleWithGuilds = await fetchSingleQuestDecision(context, guildIds);
-        const singleWithGuildsDecisions = singleWithGuilds.decision ? [singleWithGuilds.decision] : [];
-        const singleWithGuildsBounties = filterBounties(singleWithGuildsDecisions);
-        attempts.push(scanAttempt("/quests/decision", singleWithGuildsDecisions, true));
-
-        if (singleWithGuildsBounties.length > 0) {
-            console.info("[DesktopBounties] scan result", {
-                userId: currentUserId(),
-                placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
-                source: "quests-decision",
-                mobileIdentityHeader: Boolean(getMobileSuperPropertiesBase64()),
-                hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
-                connectionType,
-                attempts
-            });
-
-            return {
-                requestId: singleWithGuilds.requestId,
-                decisions: singleWithGuildsDecisions,
-                bounties: singleWithGuildsBounties,
-                clientAdSessionId,
-                clientHeartbeatSessionId,
-                source: "quests-decision",
-                attempts
-            };
-        }
-    }
+    // Match the current Discord Android Quest Home Bounty flow:
+    // GET /quests/get-decisions
+    // placement=VIDEO_MODAL_MOBILE (5)
+    // client_ad_session_id=<native ad session>
+    // client_heartbeat_session_id=<native heartbeat session>
+    // num_decisions_requested=5
+    // context.connection_type=<NetworkStore type>
+    const response = await fetchQuestHomeBountyDecisions(context);
+    const bounties = filterBounties(response.decisions);
+    const attempts = [scanAttempt(response.decisions)];
 
     console.info("[DesktopBounties] scan result", {
         userId: currentUserId(),
-        placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
-        source: "none",
+        endpoint: "/quests/get-decisions",
+        placement: BOUNTY_VIDEO_MODAL_MOBILE_PLACEMENT,
+        placementName: "VIDEO_MODAL_MOBILE",
+        requested: MAX_DECISIONS,
+        returned: response.decisions.length,
+        bounties: bounties.length,
         mobileIdentityHeader: Boolean(getMobileSuperPropertiesBase64()),
         hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
         connectionType,
-        attempts
+        creativeTypes: response.decisions.map(decision => getCreativeType(decision) ?? null)
     });
 
     return {
-        requestId: multi.requestId,
-        decisions: multi.decisions,
-        bounties: [],
+        requestId: response.requestId,
+        decisions: response.decisions,
+        bounties,
         clientAdSessionId,
         clientHeartbeatSessionId,
-        source: "none",
+        source: bounties.length > 0 ? "get-decisions" : "none",
         attempts
     };
 }
