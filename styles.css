@@ -1,3 +1,9 @@
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2026 danyx64
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 .vc-desktop-bounties-page {
     --vc-db-bg: var(--background-primary, rgb(25 26 29));
     --vc-db-surface: var(--background-secondary, rgb(35 36 40));
@@ -354,11 +360,6 @@
     color: var(--vc-db-text);
 }
 
-.vc-desktop-bounties-secondaryButton:hover:not(:disabled) {
-    background: var(--vc-db-hover);
-    color: var(--vc-db-strong);
-}
-
 .vc-desktop-bounties-primaryButton {
     background: var(--vc-db-brand);
     color: white;
@@ -374,6 +375,11 @@
 .vc-desktop-bounties-navLink:focus-visible {
     outline: 2px solid var(--vc-db-brand);
     outline-offset: 2px;
+}
+
+.vc-desktop-bounties-secondaryButton:hover:not(:disabled) {
+    background: var(--vc-db-hover);
+    color: var(--vc-db-strong);
 }
 
 .vc-desktop-bounties-infoBox,
@@ -498,7 +504,7 @@
     }
 }
 
-@media (max-width: 900px) {
+@media (width <= 900px) {
     .vc-desktop-bounties-pageInner {
         width: min(100% - 32px, 1200px);
     }
@@ -509,7 +515,7 @@
     }
 }
 
-@media (max-width: 640px) {
+@media (width <= 640px) {
     .vc-desktop-bounties-pageInner {
         width: calc(100% - 24px);
         padding-top: 26px;
