@@ -252,7 +252,7 @@ export function mediaUrl(asset?: string): string | undefined {
     if (!asset) return undefined;
     if (/^(?:https?:|blob:|data:)/i.test(asset)) return asset;
 
-    return `https://cdn.discordapp.com/${asset.replace(/^\\/+/, "")}`;
+    return `https://cdn.discordapp.com/${asset.replace(/^\/+/, "")}`;
 }
 
 export function safeExternalUrl(value?: string): string | undefined {
