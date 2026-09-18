@@ -1,3 +1,9 @@
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2026 danyx64
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 import { filters, findByPropsLazy, findStoreLazy, mapMangledModuleLazy } from "@webpack";
 import { NavigationRouter, RestAPI, UserStore } from "@webpack/common";
 
@@ -16,7 +22,12 @@ const AD_SESSION_IDLE_MS = 30 * 60 * 1000;
 const AD_SESSION_MAX_MS = 12 * 60 * 60 * 1000;
 
 let legacyStateCleared = false;
-let bountyFetchInFlight: Promise<LoadResult> | null = null;
+const bountyFetchInFlightByUser = new Map<string, Promise<LoadResult>>();
+const bountyCacheByUser = new Map<string, { expiresAt: number; result: LoadResult; }>();
+
+const DEFAULT_BOUNTY_CACHE_MS = 30_000;
+const MIN_BOUNTY_CACHE_MS = 5_000;
+const MAX_BOUNTY_CACHE_MS = 5 * 60_000;
 
 const LEGACY_GLOBAL_KEYS = [
     AD_SESSION_STORAGE_KEY,
@@ -120,6 +131,7 @@ export interface ScanAttempt {
 }
 
 export interface LoadResult {
+    userId: string;
     requestId?: string;
     decisions: AdDecision[];
     bounties: AdDecision[];
@@ -141,12 +153,24 @@ interface RequestContext {
     connectionType?: unknown;
 }
 
-function currentUserId(): string {
-    return UserStore.getCurrentUser()?.id ?? "unknown-user";
+export function getCurrentUserId(): string | null {
+    return UserStore.getCurrentUser()?.id ?? null;
 }
 
-function scopedStorageKey(base: string): string {
-    return `${base}:${currentUserId()}`;
+function requireCurrentUserId(): string {
+    const userId = getCurrentUserId();
+    if (!userId) throw new Error("No authenticated Discord user");
+    return userId;
+}
+
+function assertCurrentUser(expectedUserId: string) {
+    if (getCurrentUserId() !== expectedUserId) {
+        throw new Error("Discord account changed while the Bounty operation was running");
+    }
+}
+
+function scopedStorageKey(base: string, userId: string): string {
+    return `${base}:${userId}`;
 }
 
 function clearLegacyGlobalStateOnce() {
@@ -168,9 +192,9 @@ function createUuid(): string {
     });
 }
 
-function getFallbackAdSessionId(): string {
+function getFallbackAdSessionId(userId: string): string {
     const now = Date.now();
-    const key = scopedStorageKey(AD_SESSION_STORAGE_KEY);
+    const key = scopedStorageKey(AD_SESSION_STORAGE_KEY, userId);
 
     try {
         const raw = localStorage.getItem(key);
@@ -200,7 +224,9 @@ function getFallbackAdSessionId(): string {
     return fresh.id;
 }
 
-export function getAdSessionId(): string {
+export function getAdSessionId(userId = requireCurrentUserId()): string {
+    assertCurrentUser(userId);
+
     try {
         const native = NativeAdSession.getOrRefreshAdSession?.();
         if (native?.uuid) return native.uuid;
@@ -208,7 +234,7 @@ export function getAdSessionId(): string {
         console.warn("[DesktopBounties] Could not reuse Discord ad session", error);
     }
 
-    return getFallbackAdSessionId();
+    return getFallbackAdSessionId(userId);
 }
 
 async function getHeartbeatSessionId(): Promise<string | undefined> {
@@ -229,40 +255,40 @@ function getConnectionType(): unknown {
     }
 }
 
-function readProgress(): Record<string, number> {
+function readProgress(userId: string): Record<string, number> {
     try {
-        return JSON.parse(localStorage.getItem(scopedStorageKey(PROGRESS_STORAGE_KEY)) ?? "{}") as Record<string, number>;
+        return JSON.parse(localStorage.getItem(scopedStorageKey(PROGRESS_STORAGE_KEY, userId)) ?? "{}") as Record<string, number>;
     } catch {
         return {};
     }
 }
 
-export function getSavedProgress(id: string): number {
-    return Math.max(0, Number(readProgress()[id]) || 0);
+export function getSavedProgress(userId: string, id: string): number {
+    return Math.max(0, Number(readProgress(userId)[id]) || 0);
 }
 
-export function saveProgress(id: string, seconds: number) {
+export function saveProgress(userId: string, id: string, seconds: number) {
     try {
-        const all = readProgress();
+        const all = readProgress(userId);
         all[id] = Math.max(0, seconds);
-        localStorage.setItem(scopedStorageKey(PROGRESS_STORAGE_KEY), JSON.stringify(all));
+        localStorage.setItem(scopedStorageKey(PROGRESS_STORAGE_KEY, userId), JSON.stringify(all));
     } catch { }
 }
 
-function readClaimedIds(): Set<string> {
+function readClaimedIds(userId: string): Set<string> {
     try {
-        const ids = JSON.parse(localStorage.getItem(scopedStorageKey(CLAIMED_STORAGE_KEY)) ?? "[]") as string[];
+        const ids = JSON.parse(localStorage.getItem(scopedStorageKey(CLAIMED_STORAGE_KEY, userId)) ?? "[]") as string[];
         return new Set(Array.isArray(ids) ? ids : []);
     } catch {
         return new Set();
     }
 }
 
-export function rememberClaimed(id: string) {
+export function rememberClaimed(userId: string, id: string) {
     try {
-        const ids = readClaimedIds();
+        const ids = readClaimedIds(userId);
         ids.add(id);
-        localStorage.setItem(scopedStorageKey(CLAIMED_STORAGE_KEY), JSON.stringify([...ids]));
+        localStorage.setItem(scopedStorageKey(CLAIMED_STORAGE_KEY, userId), JSON.stringify([...ids]));
     } catch { }
 }
 
@@ -322,9 +348,9 @@ export function getBountyContent(decision: AdDecision): BountyCreativeContent | 
     return decision.creative?.creative_content;
 }
 
-function filterBounties(decisions: AdDecision[]): AdDecision[] {
+function filterBounties(decisions: AdDecision[], userId: string): AdDecision[] {
     const seen = new Set<string>();
-    const claimed = readClaimedIds();
+    const claimed = readClaimedIds(userId);
     const bounties: AdDecision[] = [];
 
     for (const decision of decisions) {
@@ -345,6 +371,30 @@ function filterBounties(decisions: AdDecision[]): AdDecision[] {
 
 function makeRequestContext(connectionType: unknown): Record<string, unknown> | undefined {
     return connectionType == null ? undefined : { connection_type: connectionType };
+}
+
+function assertSuccessfulResponse(response: any) {
+    const status = Number(response?.status);
+    if (!Number.isFinite(status) || status < 400) return;
+
+    const error = new Error(response?.body?.message || `Discord request failed with HTTP ${status}`) as Error & {
+        body?: unknown;
+        status?: number;
+    };
+    error.body = response?.body;
+    error.status = status;
+    throw error;
+}
+
+function getBountyCacheDuration(decisions: AdDecision[]): number {
+    const ttlSeconds = decisions
+        .map(decision => Number(decision.response_ttl_seconds))
+        .filter(ttl => Number.isFinite(ttl) && ttl > 0);
+
+    if (ttlSeconds.length === 0) return DEFAULT_BOUNTY_CACHE_MS;
+
+    const ttlMs = Math.min(...ttlSeconds) * 1000;
+    return Math.min(MAX_BOUNTY_CACHE_MS, Math.max(MIN_BOUNTY_CACHE_MS, ttlMs));
 }
 
 function encodeBase64Json(value: unknown): string {
@@ -428,6 +478,7 @@ async function fetchQuestHomeBountyDecisions(context: RequestContext): Promise<{
     attachMobileDeliveryHeaders(request);
 
     const response = await (RestAPI.get as any)(request);
+    assertSuccessfulResponse(response);
     const body = (response?.body ?? {}) as DecisionsResponse;
 
     return {
@@ -445,28 +496,30 @@ function scanAttempt(decisions: AdDecision[], bountyCount: number): ScanAttempt 
     };
 }
 
-async function performBountyFetch(): Promise<LoadResult> {
+async function performBountyFetch(userId: string): Promise<LoadResult> {
     clearLegacyGlobalStateOnce();
+    assertCurrentUser(userId);
 
-    const clientAdSessionId = getAdSessionId();
+    const clientAdSessionId = getAdSessionId(userId);
     const clientHeartbeatSessionId = await getHeartbeatSessionId();
-    const connectionType = getConnectionType();
+    assertCurrentUser(userId);
 
+    const connectionType = getConnectionType();
     const context: RequestContext = {
         clientAdSessionId,
         clientHeartbeatSessionId,
         connectionType
     };
 
-    // Match the current Discord Android Quest Home Bounty flow exactly:
-    // one GET /quests/get-decisions request, placement VIDEO_MODAL_MOBILE (5),
-    // five requested decisions, native ad/heartbeat sessions and network context.
+    // Mirror the current Discord Android Quest Home Bounty delivery request.
     const response = await fetchQuestHomeBountyDecisions(context);
-    const bounties = filterBounties(response.decisions);
+    assertCurrentUser(userId);
+
+    const bounties = filterBounties(response.decisions, userId);
     const attempts = [scanAttempt(response.decisions, bounties.length)];
 
     console.info("[DesktopBounties] scan result", {
-        userId: currentUserId(),
+        userId,
         endpoint: "/quests/get-decisions",
         placement: BOUNTY_VIDEO_MODAL_MOBILE_PLACEMENT,
         placementName: "VIDEO_MODAL_MOBILE",
@@ -479,6 +532,7 @@ async function performBountyFetch(): Promise<LoadResult> {
     });
 
     return {
+        userId,
         requestId: response.requestId,
         decisions: response.decisions,
         bounties,
@@ -489,27 +543,49 @@ async function performBountyFetch(): Promise<LoadResult> {
     };
 }
 
-export function fetchBounties(): Promise<LoadResult> {
-    // Focus, visibility and route events can arrive together. Coalesce them into
-    // the same network request so the client never asks Discord for duplicate
-    // decision batches while a scan is already running.
-    if (bountyFetchInFlight) return bountyFetchInFlight;
-
-    bountyFetchInFlight = performBountyFetch().finally(() => {
-        bountyFetchInFlight = null;
-    });
-
-    return bountyFetchInFlight;
+export function invalidateBountyCache(userId: string) {
+    bountyCacheByUser.delete(userId);
 }
 
-export async function claimBounty(decision: AdDecision) {
+export function fetchBounties(userId: string, force = false): Promise<LoadResult> {
+    assertCurrentUser(userId);
+
+    if (!force) {
+        const cached = bountyCacheByUser.get(userId);
+        if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.result);
+    }
+
+    const existing = bountyFetchInFlightByUser.get(userId);
+    if (existing) return existing;
+
+    const request = performBountyFetch(userId)
+        .then(result => {
+            bountyCacheByUser.set(userId, {
+                expiresAt: Date.now() + getBountyCacheDuration(result.decisions),
+                result
+            });
+            return result;
+        })
+        .finally(() => {
+            if (bountyFetchInFlightByUser.get(userId) === request) {
+                bountyFetchInFlightByUser.delete(userId);
+            }
+        });
+
+    bountyFetchInFlightByUser.set(userId, request);
+    return request;
+}
+
+export async function claimBounty(decision: AdDecision, userId: string) {
+    assertCurrentUser(userId);
+
     const content = getBountyContent(decision);
     if (!content?.id) throw new Error("Missing Bounty creative ID");
 
-    // Discord mobile refreshes/reuses the native ad session again at claim time,
-    // rather than blindly reusing the id captured when the list was fetched.
-    const clientAdSessionId = getAdSessionId();
+    // Discord mobile refreshes/reuses the native ad session at claim time.
+    const clientAdSessionId = getAdSessionId(userId);
     const clientHeartbeatSessionId = await getHeartbeatSessionId();
+    assertCurrentUser(userId);
 
     const body: Record<string, string | null> = {
         decision_metadata_sealed: decision.metadata_sealed ?? null,
@@ -525,8 +601,11 @@ export async function claimBounty(decision: AdDecision) {
     };
     attachMobileDeliveryHeaders(request);
 
-    await (RestAPI.post as any)(request);
-    rememberClaimed(content.id);
+    const response = await (RestAPI.post as any)(request);
+    assertSuccessfulResponse(response);
+
+    rememberClaimed(userId, content.id);
+    invalidateBountyCache(userId);
 }
 
 export function isBountiesRoute(): boolean {
