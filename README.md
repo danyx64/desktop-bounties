@@ -10,11 +10,13 @@ The plugin requests Discord's authenticated Quest decision endpoint using the mo
 - Mirrors the native Quests row classes and dimensions so the sidebar item follows Discord's own sizing, spacing and theme
 - Suppresses the native Quests selected state while the Bounties page is open
 - Opens Bounties as a **full page**, not a modal
-- Shows the current **Orbs balance** in the top-right corner
+- Shows the current **Orbs balance** in a Quest-style pill in the top-right corner
+- Has no manual refresh button; returning to the tab/window triggers a background refresh
 - Shows **only Bounties that are still to complete**
 - Does not show a completed/history section
 - Does not show old Video Quest history
-- Requests up to 15 Bounty decisions in the current Discord response
+- Mirrors Discord mobile's Quest Home request with `placement=4`, five decisions, ad session, heartbeat session and connection context
+- Falls back to Discord desktop's `/quests/decision` delivery path when the mobile carousel request returns no Bounties
 - Uses the Bounty's **`video_hls` full stream** for playback
 - Does **not** substitute the short `video_preview` clip when the full stream is unavailable
 - Tracks the configured `reward_timer_seconds` only while the full HLS video is actually playing, Discord is visible, and the window is focused
@@ -23,6 +25,7 @@ The plugin requests Discord's authenticated Quest decision endpoint using the mo
   `POST /quests/creatives/{creative_id}/claim-reward`
 - Includes sealed decision metadata when Discord supplies it
 - Removes a Bounty from the page after Discord accepts the claim
+- Refreshes Bounties and Orbs automatically when the Discord window/tab becomes active again
 - Refreshes the Orbs balance after a successful claim
 - Shows Discord's error and a retry button if a claim is rejected
 
