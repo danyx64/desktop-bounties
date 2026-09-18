@@ -2,7 +2,7 @@
  * DesktopBounties UI
  */
 
-import { filters, mapMangledModuleLazy } from "@webpack";
+import { filters, findComponentByCodeLazy, mapMangledModuleLazy } from "@webpack";
 import { NavigationRouter, React, UserStore, useStateFromStores } from "@webpack/common";
 
 import {
@@ -10,7 +10,6 @@ import {
     BOUNTIES_ROUTE,
     claimBounty,
     fetchBounties,
-    fetchOrbBalance,
     getAdSessionId,
     getBountyContent,
     getErrorMessage,
@@ -126,14 +125,11 @@ function BountyIcon({ className = "" }: { className?: string; }) {
     );
 }
 
-function OrbIcon() {
-    return (
-        <svg className="vc-desktop-bounties-orbIcon" aria-hidden="true" viewBox="0 0 24 24">
-            <path fill="currentColor" d="M12 2.25 14.32 7l5.18.75-3.75 3.66.89 5.16L12 14.13l-4.64 2.44.89-5.16L4.5 7.75 9.68 7 12 2.25Z" />
-            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.5" opacity=".45" />
-        </svg>
-    );
-}
+const NativeOrbBalanceMenu = findComponentByCodeLazy<any>(
+    "BalanceWidgetMenu",
+    "showNotificationBadge",
+    "balanceWidgetMode"
+);
 
 function FullBountyVideo({
     hlsUrl,
@@ -493,28 +489,8 @@ function BountiesPage() {
     const [result, setResult] = React.useState<LoadResult | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
-    const [orbBalance, setOrbBalance] = React.useState<number | null>(null);
-    const [orbLoading, setOrbLoading] = React.useState(true);
     const loadInFlightRef = React.useRef(false);
     const lastAutoRefreshRef = React.useRef(0);
-
-    const loadOrbBalance = React.useCallback(async (background = false) => {
-        if (!currentUserId) {
-            setOrbBalance(null);
-            setOrbLoading(false);
-            return;
-        }
-
-        if (!background) setOrbLoading(true);
-
-        try {
-            setOrbBalance(await fetchOrbBalance());
-        } catch {
-            setOrbBalance(null);
-        } finally {
-            if (!background) setOrbLoading(false);
-        }
-    }, [currentUserId]);
 
     const load = React.useCallback(async (background = false) => {
         if (!currentUserId || loadInFlightRef.current) return;
@@ -534,20 +510,14 @@ function BountiesPage() {
             if (!background) setLoading(false);
             loadInFlightRef.current = false;
         }
+    }, [currentUserId]);
 
-        void loadOrbBalance(background);
-    }, [currentUserId, loadOrbBalance]);
-
-    // Discord's account switcher can keep the Quest Home React tree mounted.
-    // Rescan after the new account token has had a moment to settle.
     React.useEffect(() => {
         setResult(null);
         setError(null);
-        setOrbBalance(null);
 
         if (!currentUserId) {
             setLoading(true);
-            setOrbLoading(true);
             return;
         }
 
@@ -558,13 +528,13 @@ function BountiesPage() {
         return () => window.clearTimeout(timeout);
     }, [currentUserId, load]);
 
-    // No manual refresh button: returning to Discord/the Bounties tab refreshes
-    // delivery automatically, while a short cooldown avoids duplicate API calls.
+    // Returning to Discord or to this route refreshes automatically. The short
+    // cooldown prevents focus + visibilitychange from issuing duplicate scans.
     React.useEffect(() => {
         if (!currentUserId) return;
 
         const refreshIfVisible = () => {
-            if (document.visibilityState !== "visible" || !document.hasFocus()) return;
+            if (document.visibilityState !== "visible" || !document.hasFocus() || !isBountiesRoute()) return;
 
             const now = Date.now();
             if (now - lastAutoRefreshRef.current < 5000) return;
@@ -579,10 +549,12 @@ function BountiesPage() {
 
         document.addEventListener("visibilitychange", handleVisibilityChange);
         window.addEventListener("focus", refreshIfVisible);
+        window.addEventListener("popstate", refreshIfVisible);
 
         return () => {
             document.removeEventListener("visibilitychange", handleVisibilityChange);
             window.removeEventListener("focus", refreshIfVisible);
+            window.removeEventListener("popstate", refreshIfVisible);
         };
     }, [currentUserId, load]);
 
@@ -594,22 +566,19 @@ function BountiesPage() {
             ...current,
             bounties: current.bounties.filter(decision => getBountyContent(decision)?.id !== id)
         });
-        void loadOrbBalance();
-    }, [loadOrbBalance]);
+        window.setTimeout(() => void load(true), 750);
+    }, [load]);
 
     return (
         <div className="vc-desktop-bounties-page">
             <div className="vc-desktop-bounties-toolbar">
-                <button
-                    type="button"
-                    className="vc-desktop-bounties-orbCounter"
-                    title="Open the Orbs shop"
-                    onClick={() => NavigationRouter.transitionTo("/shop?tab=orbs")}
-                >
-                    <OrbIcon />
-                    <strong>{orbLoading ? "…" : orbBalance != null ? orbBalance.toLocaleString() : "—"}</strong>
-                    <span>Orbs</span>
-                </button>
+                <div className="vc-desktop-bounties-nativeOrb">
+                    <NativeOrbBalanceMenu
+                        showNotificationBadge={false}
+                        ctaText="Open Orbs"
+                        ctaOnClick={() => NavigationRouter.transitionTo("/shop?tab=orbs")}
+                    />
+                </div>
             </div>
 
             <main className="vc-desktop-bounties-pageInner">
