@@ -324,7 +324,7 @@ function BountyCard({
         setClaimError(null);
 
         try {
-            await claimBounty(decision, clientAdSessionId);
+            await claimBounty(decision);
             onClaimed(content.id);
         } catch (error) {
             console.error("[DesktopBounties] Discord rejected Bounty claim", error);
