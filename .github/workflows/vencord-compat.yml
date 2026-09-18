@@ -1,0 +1,66 @@
+name: Vencord compatibility
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vencord-compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out DesktopBounties
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Check out latest Vencord
+        uses: actions/checkout@v4
+        with:
+          repository: Vendicated/Vencord
+          path: vencord
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install Vencord dependencies
+        working-directory: vencord
+        run: pnpm install --frozen-lockfile
+
+      - name: Mount DesktopBounties as a userplugin
+        run: |
+          mkdir -p vencord/src/userplugins/desktopBounties
+          cp plugin/index.tsx plugin/core.ts plugin/ui.tsx plugin/i18n.ts plugin/styles.css vencord/src/userplugins/desktopBounties/
+
+      - name: Build Vencord with DesktopBounties
+        working-directory: vencord
+        run: pnpm build
+
+      - name: Type-check
+        working-directory: vencord
+        run: pnpm testTsc
+
+      - name: Lint plugin source
+        working-directory: vencord
+        run: pnpm exec eslint --no-ignore src/userplugins/desktopBounties --max-warnings=0
+
+      - name: Lint plugin styles
+        working-directory: vencord
+        run: pnpm exec stylelint "src/userplugins/desktopBounties/**/*.css"
