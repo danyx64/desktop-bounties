@@ -445,7 +445,6 @@ async function fetchQuestHomeBountyDecisions(context: RequestContext): Promise<{
     const request = {
         url: "/quests/get-decisions",
         query,
-        rejectWithError: false,
         context: makeRequestContext(context.connectionType)
     };
 
@@ -475,7 +474,6 @@ async function fetchDesktopBountyDecision(context: RequestContext): Promise<{
     const response = await RestAPI.get({
         url: "/quests/decision",
         query,
-        rejectWithError: false,
         context: makeRequestContext(context.connectionType)
     });
     assertSuccessfulResponse(response);
@@ -614,8 +612,7 @@ export async function claimBounty(decision: AdDecision, userId: string) {
 
     const response = await RestAPI.post({
         url: `/quests/creatives/${content.id}/claim-reward`,
-        body,
-        rejectWithError: false
+        body
     });
     assertSuccessfulResponse(response);
 
