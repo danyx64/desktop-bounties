@@ -501,7 +501,7 @@ async function fetchDesktopBountyDecision(context: RequestContext): Promise<{
     const response = await RestAPI.get(request);
     assertSuccessfulResponse(response);
 
-    const body = response.body;
+    const { body } = response;
     if (body == null || typeof body !== "object") {
         return { decision: null };
     }
