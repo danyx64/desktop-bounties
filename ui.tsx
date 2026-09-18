@@ -1,9 +1,12 @@
 /*
- * DesktopBounties UI
+ * Vencord, a Discord client mod
+ * Copyright (c) 2026 danyx64
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { filters, findComponentByCodeLazy, mapMangledModuleLazy } from "@webpack";
-import { LocaleStore, NavigationRouter, React, UserStore, useStateFromStores } from "@webpack/common";
+import ErrorBoundary from "@components/ErrorBoundary";
+import { filters, findComponentByCodeLazy, findCssClassesLazy, mapMangledModuleLazy } from "@webpack";
+import { FluxDispatcher, LocaleStore, NavigationRouter, React, UserStore, useStateFromStores } from "@webpack/common";
 
 import {
     AdDecision,
@@ -25,82 +28,18 @@ import { formatNumber, formatPercent, msg } from "./i18n";
 
 type ClaimState = "idle" | "claiming" | "error";
 
-interface NativeNavClasses {
-    wrapper: string;
-    channel: string;
-    interactive: string;
-    interactiveSelected: string;
-    link: string;
-    layout: string;
-    avatar: string;
-    icon: string;
-    content: string;
-    nameAndDecorators: string;
-    name: string;
-}
-
-const FALLBACK_NAV_CLASSES: NativeNavClasses = {
-    wrapper: "wrapper__553bf",
-    channel: "channel__972a0 container_e45859",
-    interactive: "interactive_f88cfd interactive__972a0 linkButton__972a0",
-    interactiveSelected: "interactive_f88cfd interactive__972a0 linkButton__972a0 interactiveSelected__972a0 selected_f88cfd",
-    link: "link__972a0",
-    layout: "layout__20a53 avatarWithText__972a0",
-    avatar: "avatar__20a53",
-    icon: "linkButtonIcon__972a0",
-    content: "content__20a53",
-    nameAndDecorators: "nameAndDecorators__20a53",
-    name: "name__20a53 text-md/medium__20a53"
-};
-
-function topShortcutLink(name: "friends" | "nitro" | "shop" | "quests") {
-    return document.querySelector<HTMLAnchorElement>(`a[data-list-item-id$="___${name}"]`);
-}
-
-function readNativeNavClasses(): NativeNavClasses {
-    const questLink = topShortcutLink("quests");
-    if (!questLink) return FALLBACK_NAV_CLASSES;
-
-    const questInteractive = questLink.parentElement as HTMLElement | null;
-    const questLi = questInteractive?.parentElement as HTMLElement | null;
-    const questWrapper = questLi?.parentElement as HTMLElement | null;
-    const layout = questLink.firstElementChild as HTMLElement | null;
-    const avatar = layout?.firstElementChild as HTMLElement | null;
-    const icon = avatar?.querySelector<SVGElement>("svg") ?? null;
-    const content = layout?.children.item(1) as HTMLElement | null;
-    const nameAndDecorators = content?.firstElementChild as HTMLElement | null;
-    const name = nameAndDecorators?.firstElementChild as HTMLElement | null;
-
-    const shopInteractive = topShortcutLink("shop")?.parentElement as HTMLElement | null;
-    const interactive = shopInteractive?.className || questInteractive?.className || FALLBACK_NAV_CLASSES.interactive;
-
-    const selectedInteractive = (["friends", "nitro", "shop", "quests"] as const)
-        .map(topShortcutLink)
-        .map(link => link?.parentElement as HTMLElement | null)
-        .find(element => {
-            const classes = element?.className;
-            return typeof classes === "string"
-                && (classes.includes("interactiveSelected") || /(^|\s)selected_/.test(classes));
-        });
-
-    return {
-        wrapper: questWrapper?.className || FALLBACK_NAV_CLASSES.wrapper,
-        channel: questLi?.className || FALLBACK_NAV_CLASSES.channel,
-        interactive,
-        interactiveSelected: selectedInteractive?.className || FALLBACK_NAV_CLASSES.interactiveSelected,
-        link: questLink.className || FALLBACK_NAV_CLASSES.link,
-        layout: layout?.className || FALLBACK_NAV_CLASSES.layout,
-        avatar: avatar?.className || FALLBACK_NAV_CLASSES.avatar,
-        icon: icon?.getAttribute("class") || FALLBACK_NAV_CLASSES.icon,
-        content: content?.className || FALLBACK_NAV_CLASSES.content,
-        nameAndDecorators: nameAndDecorators?.className || FALLBACK_NAV_CLASSES.nameAndDecorators,
-        name: name?.className || FALLBACK_NAV_CLASSES.name
-    };
-}
-
-function sameNativeNavClasses(a: NativeNavClasses, b: NativeNavClasses) {
-    return Object.keys(a).every(key => a[key as keyof NativeNavClasses] === b[key as keyof NativeNavClasses]);
-}
+const NavWrapperClasses = findCssClassesLazy("wrapper", "withGradient", "badge");
+const ShortcutClasses = findCssClassesLazy(
+    "channel",
+    "interactive",
+    "interactiveSelected",
+    "link",
+    "linkButton",
+    "linkButtonIcon",
+    "avatarWithText"
+);
+const InteractionClasses = findCssClassesLazy("interactive", "selected");
+const LayoutClasses = findCssClassesLazy("layout", "avatar", "content", "nameAndDecorators", "name");
 
 const HlsRuntime = mapMangledModuleLazy("ManagedMediaSource", {
     loadHls: filters.byCode(".then(", ".default"),
@@ -130,11 +69,13 @@ const NativeOrbBalanceMenu = findComponentByCodeLazy<any>(
     "showNotificationBadge",
     "balanceWidgetMode"
 );
+const SafeNativeOrbBalanceMenu = ErrorBoundary.wrap(NativeOrbBalanceMenu, { noop: true });
 
 function FullBountyVideo({
     hlsUrl,
     poster,
     initialTime,
+    maxPlayableTime,
     onAvailable,
     onUnavailable,
     onProgress,
@@ -143,6 +84,7 @@ function FullBountyVideo({
     hlsUrl: string;
     poster?: string;
     initialTime: number;
+    maxPlayableTime: number;
     onAvailable: () => void;
     onUnavailable: () => void;
     onProgress: (currentTime: number) => void;
@@ -277,44 +219,50 @@ function FullBountyVideo({
                 }
             }}
             onTimeUpdate={event => onProgress(event.currentTarget.currentTime)}
+            onSeeking={event => {
+                const video = event.currentTarget;
+                if (video.currentTime > maxPlayableTime + 1) {
+                    video.currentTime = maxPlayableTime;
+                }
+            }}
             onEnded={onEnded}
         />
     );
 }
 
-export function BountiesNavItem() {
+function BountiesNavItemInner() {
     const locale = useStateFromStores([LocaleStore], () => LocaleStore.locale || "en-US");
     const [active, setActive] = React.useState(isBountiesRoute);
-    const [nativeClasses, setNativeClasses] = React.useState<NativeNavClasses>(FALLBACK_NAV_CLASSES);
 
     React.useEffect(() => {
-        const sync = () => {
-            const nextActive = isBountiesRoute();
-            setActive(current => current === nextActive ? current : nextActive);
+        const sync = () => setActive(isBountiesRoute());
 
-            const nextClasses = readNativeNavClasses();
-            setNativeClasses(current => sameNativeNavClasses(current, nextClasses) ? current : nextClasses);
+        FluxDispatcher.subscribe("ROUTE_CHANGED", sync);
+        window.addEventListener("popstate", sync);
 
-            if (nextActive) {
-                const questInteractive = topShortcutLink("quests")?.parentElement as HTMLElement | null;
-                if (questInteractive && questInteractive.className !== nextClasses.interactive) {
-                    questInteractive.className = nextClasses.interactive;
-                    questInteractive.removeAttribute("aria-current");
-                }
-            }
+        return () => {
+            FluxDispatcher.unsubscribe("ROUTE_CHANGED", sync);
+            window.removeEventListener("popstate", sync);
         };
-
-        sync();
-        const interval = window.setInterval(sync, 400);
-        return () => window.clearInterval(interval);
     }, []);
 
+    const interactiveClassName = [
+        InteractionClasses.interactive,
+        ShortcutClasses.interactive,
+        ShortcutClasses.linkButton,
+        active ? ShortcutClasses.interactiveSelected : null,
+        active ? InteractionClasses.selected : null
+    ].filter(Boolean).join(" ");
+
     return (
-        <div className={`${nativeClasses.wrapper} vc-desktop-bounties-navShell`} data-vc-desktop-bounties-nav="true">
-            <li className={nativeClasses.channel} role="listitem">
-                <div className={active ? nativeClasses.interactiveSelected : nativeClasses.interactive}>
+        <div
+            className={`${NavWrapperClasses.wrapper} vc-desktop-bounties-navShell${active ? " vc-desktop-bounties-navShell-active" : ""}`}
+            data-vc-desktop-bounties-nav="true"
+        >
+            <li className={ShortcutClasses.channel} role="listitem">
+                <div className={interactiveClassName}>
                     <a
-                        className={`${nativeClasses.link} vc-desktop-bounties-navLink`}
+                        className={`${ShortcutClasses.link} vc-desktop-bounties-navLink`}
                         data-list-item-id="private-channels-uid_11___bounties"
                         tabIndex={-1}
                         href={BOUNTIES_ROUTE}
@@ -324,13 +272,13 @@ export function BountiesNavItem() {
                             openBountiesPage();
                         }}
                     >
-                        <div className={nativeClasses.layout}>
-                            <div className={nativeClasses.avatar}>
-                                <BountyIcon className={nativeClasses.icon} />
+                        <div className={`${LayoutClasses.layout} ${ShortcutClasses.avatarWithText}`}>
+                            <div className={LayoutClasses.avatar}>
+                                <BountyIcon className={ShortcutClasses.linkButtonIcon} />
                             </div>
-                            <div className={nativeClasses.content}>
-                                <div className={nativeClasses.nameAndDecorators}>
-                                    <div className={nativeClasses.name}>{msg("navBounties", {}, locale)}</div>
+                            <div className={LayoutClasses.content}>
+                                <div className={LayoutClasses.nameAndDecorators}>
+                                    <div className={LayoutClasses.name}>{msg("navBounties", {}, locale)}</div>
                                 </div>
                             </div>
                         </div>
@@ -341,13 +289,17 @@ export function BountiesNavItem() {
     );
 }
 
+export const BountiesNavItem = ErrorBoundary.wrap(BountiesNavItemInner, { noop: true });
+
 function BountyCard({
     decision,
     locale,
+    userId,
     onClaimed
 }: {
     decision: AdDecision;
     locale: string;
+    userId: string;
     onClaimed: (id: string) => void;
 }) {
     const content = getBountyContent(decision);
@@ -358,7 +310,7 @@ function BountyCard({
     const icon = mediaUrl(content.product_icon);
     const ctaUrl = safeExternalUrl(content.cta?.url);
     const targetSeconds = Math.max(1, content.reward_timer_seconds ?? 15);
-    const initialProgress = Math.min(targetSeconds, getSavedProgress(content.id));
+    const initialProgress = Math.min(targetSeconds, getSavedProgress(userId, content.id));
 
     // Discord mobile bases Bounty completion on the maximum playback timestamp,
     // not on a separate wall-clock interval. Mirroring that behavior is both
@@ -380,18 +332,18 @@ function BountyCard({
         setClaimError(null);
 
         try {
-            await claimBounty(decision);
+            await claimBounty(decision, userId);
             onClaimed(content.id);
         } catch (error) {
             console.error("[DesktopBounties] Discord rejected Bounty claim", error);
             setClaimError(getErrorMessage(error));
             setClaimState("error");
         }
-    }, [claimState, decision, content.id, onClaimed]);
+    }, [claimState, decision, content.id, onClaimed, userId]);
 
     React.useEffect(() => {
-        saveProgress(content.id, wholeSeconds);
-    }, [content.id, wholeSeconds]);
+        saveProgress(userId, content.id, wholeSeconds);
+    }, [userId, content.id, wholeSeconds]);
 
     React.useEffect(() => {
         if (
@@ -428,6 +380,7 @@ function BountyCard({
                         hlsUrl={fullHls}
                         poster={image}
                         initialTime={initialProgress}
+                        maxPlayableTime={maxVideoProgressSeconds}
                         onAvailable={() => setVideoAvailable(true)}
                         onUnavailable={() => setVideoAvailable(false)}
                         onProgress={handleProgress}
@@ -517,30 +470,40 @@ function BountiesPage() {
     const [result, setResult] = React.useState<LoadResult | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
-    const loadInFlightRef = React.useRef(false);
+    const requestEpochRef = React.useRef(0);
     const lastAutoRefreshRef = React.useRef(0);
 
-    const load = React.useCallback(async (background = false) => {
-        if (!currentUserId || loadInFlightRef.current) return;
+    const load = React.useCallback(async (background = false, force = false) => {
+        if (!currentUserId) return;
 
-        loadInFlightRef.current = true;
+        const userId = currentUserId;
+        const requestEpoch = ++requestEpochRef.current;
         lastAutoRefreshRef.current = Date.now();
 
         if (!background) setLoading(true);
         setError(null);
 
         try {
-            setResult(await fetchBounties());
+            const next = await fetchBounties(userId, force);
+            if (
+                requestEpoch !== requestEpochRef.current
+                || UserStore.getCurrentUser()?.id !== userId
+                || next.userId !== userId
+            ) return;
+
+            setResult(next);
         } catch (err) {
+            if (requestEpoch !== requestEpochRef.current || UserStore.getCurrentUser()?.id !== userId) return;
+
             console.error("[DesktopBounties] Failed to fetch Bounties", err);
             setError(getErrorMessage(err));
         } finally {
-            if (!background) setLoading(false);
-            loadInFlightRef.current = false;
+            if (requestEpoch === requestEpochRef.current && !background) setLoading(false);
         }
     }, [currentUserId]);
 
     React.useEffect(() => {
+        ++requestEpochRef.current;
         setResult(null);
         setError(null);
 
@@ -551,13 +514,13 @@ function BountiesPage() {
 
         const timeout = window.setTimeout(() => {
             void load(false);
-        }, 500);
+        }, 250);
 
         return () => window.clearTimeout(timeout);
     }, [currentUserId, load]);
 
-    // Returning to Discord or to this route refreshes automatically. The short
-    // cooldown prevents focus + visibilitychange from issuing duplicate scans.
+    // Refresh on return to Discord, while the core respects Discord's response
+    // TTL and coalesces duplicate focus/visibility events into one request.
     React.useEffect(() => {
         if (!currentUserId) return;
 
@@ -565,7 +528,7 @@ function BountiesPage() {
             if (document.visibilityState !== "visible" || !document.hasFocus() || !isBountiesRoute()) return;
 
             const now = Date.now();
-            if (now - lastAutoRefreshRef.current < 5000) return;
+            if (now - lastAutoRefreshRef.current < 2_000) return;
 
             lastAutoRefreshRef.current = now;
             void load(true);
@@ -577,24 +540,25 @@ function BountiesPage() {
 
         document.addEventListener("visibilitychange", handleVisibilityChange);
         window.addEventListener("focus", refreshIfVisible);
-        window.addEventListener("popstate", refreshIfVisible);
+        FluxDispatcher.subscribe("ROUTE_CHANGED", refreshIfVisible);
 
         return () => {
             document.removeEventListener("visibilitychange", handleVisibilityChange);
             window.removeEventListener("focus", refreshIfVisible);
-            window.removeEventListener("popstate", refreshIfVisible);
+            FluxDispatcher.unsubscribe("ROUTE_CHANGED", refreshIfVisible);
         };
     }, [currentUserId, load]);
 
-    const bounties = result?.bounties ?? [];
+    const bounties = result?.userId === currentUserId ? result.bounties : [];
 
     const handleClaimed = React.useCallback((id: string) => {
-        setResult(current => current == null ? current : {
+        setResult(current => current == null || current.userId !== currentUserId ? current : {
             ...current,
             bounties: current.bounties.filter(decision => getBountyContent(decision)?.id !== id)
         });
-        window.setTimeout(() => void load(true), 750);
-    }, [load]);
+
+        window.setTimeout(() => void load(true, true), 750);
+    }, [currentUserId, load]);
 
     return (
         <div className="vc-desktop-bounties-page">
@@ -610,7 +574,7 @@ function BountiesPage() {
                         </div>
 
                         <div className="vc-desktop-bounties-nativeOrb">
-                            <NativeOrbBalanceMenu
+                            <SafeNativeOrbBalanceMenu
                                 showNotificationBadge={false}
                                 ctaText={msg("openOrbs", {}, locale)}
                                 ctaOnClick={() => NavigationRouter.transitionTo("/shop?tab=orbs")}
@@ -638,6 +602,7 @@ function BountiesPage() {
                                     key={getBountyContent(decision)?.id ?? index}
                                     decision={decision}
                                     locale={locale}
+                                    userId={currentUserId!}
                                     onClaimed={handleClaimed}
                                 />
                             ))}
@@ -657,6 +622,10 @@ function BountiesPage() {
     );
 }
 
+const SafeBountiesPage = ErrorBoundary.wrap(BountiesPage, {
+    displayName: "DesktopBountiesPage"
+});
+
 export function renderBountiesPage() {
-    return React.createElement(BountiesPage);
+    return React.createElement(SafeBountiesPage);
 }
