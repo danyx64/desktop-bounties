@@ -489,7 +489,7 @@ export async function fetchOrbBalance(): Promise<number | null> {
     return Number.isFinite(value) ? value : null;
 }
 
-export async function claimBounty(decision: AdDecision, _clientAdSessionId: string) {
+export async function claimBounty(decision: AdDecision) {
     const content = getBountyContent(decision);
     if (!content?.id) throw new Error("Missing Bounty creative ID");
 
