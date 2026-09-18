@@ -59,19 +59,23 @@ export default definePlugin({
     shouldRenderBounties: isBountiesRoute,
     renderBountiesPage,
 
-    adjustHomeShortcutSelected(route: string, selected: boolean) {
+    adjustHomeShortcutSelected(route: string | undefined, selected: boolean) {
         return route === "/quest-home" && isBountiesRoute() ? false : selected;
     },
 
-    addBountiesChild(children: any) {
+    addBountiesChild(children: React.ReactNode) {
         if (children == null) return children;
 
-        const list = Array.isArray(children) ? children : React.Children.toArray(children);
-        if (list.some((child: any) => child?.key === "vc-desktop-bounties-nav")) return list;
+        const list = React.Children.toArray(children);
+        if (list.some(child => React.isValidElement(child) && child.key === "vc-desktop-bounties-nav")) {
+            return list;
+        }
 
         // Insert before Discord's section divider so Bounties stays grouped with Friends/Nitro/Shop/Quests.
-        const dividerIndex = list.findIndex((child: any) =>
-            typeof child?.key === "string" && child.key.startsWith("section-divider")
+        const dividerIndex = list.findIndex(child =>
+            React.isValidElement(child)
+            && typeof child.key === "string"
+            && child.key.startsWith("section-divider")
         );
         const insertAt = dividerIndex >= 0 ? dividerIndex : list.length;
 
