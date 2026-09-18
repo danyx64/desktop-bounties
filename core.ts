@@ -3,7 +3,6 @@ import { NavigationRouter, RestAPI, UserStore } from "@webpack/common";
 
 export const QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT = 4;
 export const BOUNTY_CREATIVE_TYPE = 3;
-// Discord mobile currently requests five Quest Home Bounty decisions at once.
 export const MAX_DECISIONS = 5;
 export const BOUNTIES_ROUTE_PARAM = "vc_bounties";
 export const BOUNTIES_ROUTE = `/quest-home?${BOUNTIES_ROUTE_PARAM}=1`;
@@ -14,9 +13,6 @@ const CLAIMED_STORAGE_KEY = "vc-desktop-bounties-claimed-v1";
 const AD_SESSION_IDLE_MS = 30 * 60 * 1000;
 const AD_SESSION_MAX_MS = 12 * 60 * 60 * 1000;
 
-// Old builds used global localStorage keys. That meant completing a Bounty on
-// account A could hide the same creative on account B. Everything stateful is
-// account-scoped now.
 const LEGACY_GLOBAL_KEYS = [
     AD_SESSION_STORAGE_KEY,
     PROGRESS_STORAGE_KEY,
@@ -32,19 +28,18 @@ interface DiscordSession {
     lastUsedTimestamp?: number;
 }
 
-// Discord's heartbeat session is token-aware and is reset when the active
-// account changes, so it is safe to reuse for the mobile-style request.
 const NativeHeartbeatSession = mapMangledModuleLazy("LAST_CLIENT_HEARTBEAT_SESSION", {
     getSession: filters.byCode("handleUpdateTimeSpentSessionId", "lastUsedTimestamp")
 }) as {
     getSession?: (updateGateway?: boolean) => Promise<DiscordSession | null>;
 };
 
-// The official mobile request also passes the current connection type in the
-// request context. RestAPI's public typings do not expose `context`, but the
-// underlying Discord HTTP client accepts it.
 const NetworkStore = findStoreLazy("NetworkStore") as {
     getType?: () => unknown;
+};
+
+const GuildStore = findStoreLazy("GuildStore") as {
+    getGuilds?: () => Record<string, unknown>;
 };
 
 export interface BountyCTA {
@@ -75,6 +70,8 @@ export interface BountyCreative {
 
 export interface AdDecision {
     creative?: BountyCreative | null;
+    quest?: unknown;
+    request_id?: string | number;
     ad_identifiers?: {
         creative_type?: number;
         creative_id?: string;
@@ -83,6 +80,9 @@ export interface AdDecision {
     } | null;
     metadata_sealed?: string;
     traffic_metadata_sealed?: string;
+    provenance_metadata_sealed?: string;
+    ad_context?: unknown;
+    response_ttl_seconds?: number;
     [key: string]: unknown;
 }
 
@@ -91,18 +91,34 @@ interface DecisionsResponse {
     decisions?: AdDecision[];
 }
 
+export interface ScanAttempt {
+    endpoint: "/quests/get-decisions" | "/quests/decision";
+    visibleGuildIds: boolean;
+    returned: number;
+    bountyCount: number;
+    creativeTypes: Array<number | null>;
+}
+
 export interface LoadResult {
     requestId?: string;
     decisions: AdDecision[];
     bounties: AdDecision[];
     clientAdSessionId: string;
     clientHeartbeatSessionId?: string;
+    source: "get-decisions" | "quests-decision" | "none";
+    attempts: ScanAttempt[];
 }
 
 interface StoredAdSession {
     id: string;
     createdAt: number;
     lastUsedAt: number;
+}
+
+interface RequestContext {
+    clientAdSessionId: string;
+    clientHeartbeatSessionId?: string;
+    connectionType?: unknown;
 }
 
 function currentUserId(): string {
@@ -121,6 +137,7 @@ function clearLegacyGlobalState() {
 
 function createUuid(): string {
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
         const r = Math.random() * 16 | 0;
         const v = c === "x" ? r : (r & 0x3) | 0x8;
@@ -128,9 +145,6 @@ function createUuid(): string {
     });
 }
 
-// Keep one ad-session UUID per Discord account. The UUID is client-generated in
-// Discord itself; scoping it here avoids carrying account A's ad session into
-// account B when using Discord's account switcher.
 function getFallbackAdSessionId(): string {
     const now = Date.now();
     const key = scopedStorageKey(AD_SESSION_STORAGE_KEY);
@@ -139,15 +153,27 @@ function getFallbackAdSessionId(): string {
         const raw = localStorage.getItem(key);
         if (raw) {
             const stored = JSON.parse(raw) as StoredAdSession;
-            if (stored.id && now - stored.lastUsedAt < AD_SESSION_IDLE_MS && now - stored.createdAt < AD_SESSION_MAX_MS) {
+            if (
+                stored.id
+                && now - stored.lastUsedAt < AD_SESSION_IDLE_MS
+                && now - stored.createdAt < AD_SESSION_MAX_MS
+            ) {
                 localStorage.setItem(key, JSON.stringify({ ...stored, lastUsedAt: now }));
                 return stored.id;
             }
         }
     } catch { }
 
-    const fresh: StoredAdSession = { id: createUuid(), createdAt: now, lastUsedAt: now };
-    try { localStorage.setItem(key, JSON.stringify(fresh)); } catch { }
+    const fresh: StoredAdSession = {
+        id: createUuid(),
+        createdAt: now,
+        lastUsedAt: now
+    };
+
+    try {
+        localStorage.setItem(key, JSON.stringify(fresh));
+    } catch { }
+
     return fresh.id;
 }
 
@@ -170,6 +196,14 @@ function getConnectionType(): unknown {
         return NetworkStore.getType?.();
     } catch {
         return undefined;
+    }
+}
+
+function getGuildIds(): string[] {
+    try {
+        return Object.keys(GuildStore.getGuilds?.() ?? {}).slice(0, 50);
+    } catch {
+        return [];
     }
 }
 
@@ -202,7 +236,7 @@ function readClaimedIds(): Set<string> {
     }
 }
 
-export function isLocallyClaimed(id: string): boolean {
+function isLocallyClaimed(id: string): boolean {
     return readClaimedIds().has(id);
 }
 
@@ -217,7 +251,8 @@ export function rememberClaimed(id: string) {
 export function mediaUrl(asset?: string): string | undefined {
     if (!asset) return undefined;
     if (/^(?:https?:|blob:|data:)/i.test(asset)) return asset;
-    return `https://cdn.discordapp.com/${asset.replace(/^\/+/, "")}`;
+
+    return `https://cdn.discordapp.com/${asset.replace(/^\\/+/, "")}`;
 }
 
 export function safeExternalUrl(value?: string): string | undefined {
@@ -260,85 +295,244 @@ export function getErrorMessage(error: unknown): string {
 }
 
 export function getCreativeType(decision: AdDecision): number | undefined {
-    return decision.creative?.creative_type ?? decision.creative?.type ?? decision.ad_identifiers?.creative_type;
+    return decision.creative?.creative_type
+        ?? decision.creative?.type
+        ?? decision.ad_identifiers?.creative_type;
 }
 
 export function getBountyContent(decision: AdDecision): BountyCreativeContent | undefined {
     return decision.creative?.creative_content;
 }
 
-export async function fetchBounties(): Promise<LoadResult> {
-    clearLegacyGlobalState();
+function filterBounties(decisions: AdDecision[]): AdDecision[] {
+    return decisions.filter(decision => {
+        const content = getBountyContent(decision);
+        return getCreativeType(decision) === BOUNTY_CREATIVE_TYPE
+            && content != null
+            && !isLocallyClaimed(content.id);
+    });
+}
 
-    // Mirror Discord mobile's BountyActionCreators request as closely as the
-    // desktop client allows: placement 4, five decisions, an account-scoped ad
-    // session, the real heartbeat session, and the current connection type.
-    const clientAdSessionId = getAdSessionId();
-    const clientHeartbeatSessionId = await getHeartbeatSessionId();
-    const connectionType = getConnectionType();
+function makeRequestContext(connectionType: unknown): Record<string, unknown> | undefined {
+    return connectionType == null ? undefined : { connection_type: connectionType };
+}
 
+async function fetchQuestHomeBountyDecisions(context: RequestContext): Promise<{
+    requestId?: string;
+    decisions: AdDecision[];
+}> {
     const query: Record<string, string | number> = {
         placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
-        num_decisions_requested: MAX_DECISIONS,
-        client_ad_session_id: clientAdSessionId
+        client_ad_session_id: context.clientAdSessionId,
+        num_decisions_requested: MAX_DECISIONS
     };
 
-    if (clientHeartbeatSessionId) {
-        query.client_heartbeat_session_id = clientHeartbeatSessionId;
+    if (context.clientHeartbeatSessionId) {
+        query.client_heartbeat_session_id = context.clientHeartbeatSessionId;
     }
 
     const request: any = {
         url: "/quests/get-decisions",
-        query
+        query,
+        rejectWithError: false
     };
 
-    if (connectionType != null) {
-        request.context = { connection_type: connectionType };
-    }
+    const requestContext = makeRequestContext(context.connectionType);
+    if (requestContext) request.context = requestContext;
 
     const response = await (RestAPI.get as any)(request);
     const body = (response?.body ?? {}) as DecisionsResponse;
-    const decisions = Array.isArray(body.decisions) ? body.decisions : [];
 
-    // Do not suppress server-returned creatives based on local history. The
-    // server is authoritative for what is currently deliverable; local state is
-    // only used for progress/claim UX after a Bounty is shown.
-    const bounties = decisions.filter(decision => {
-        const content = getBountyContent(decision);
-        return getCreativeType(decision) === BOUNTY_CREATIVE_TYPE && content != null;
+    return {
+        requestId: body.request_id,
+        decisions: Array.isArray(body.decisions) ? body.decisions : []
+    };
+}
+
+async function fetchSingleQuestDecision(
+    context: RequestContext,
+    visibleGuildIds?: string[]
+): Promise<{
+    requestId?: string;
+    decision: AdDecision | null;
+}> {
+    const params = new URLSearchParams({
+        placement: String(QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT)
     });
+
+    if (context.clientHeartbeatSessionId) {
+        params.append("client_heartbeat_session_id", context.clientHeartbeatSessionId);
+    }
+
+    params.append("client_ad_session_id", context.clientAdSessionId);
+
+    for (const guildId of visibleGuildIds ?? []) {
+        params.append("visible_guild_ids", guildId);
+    }
+
+    const request: any = {
+        url: `/quests/decision?${params.toString()}`,
+        rejectWithError: false
+    };
+
+    const requestContext = makeRequestContext(context.connectionType);
+    if (requestContext) request.context = requestContext;
+
+    const response = await (RestAPI.get as any)(request);
+    const body = response?.body;
+
+    if (body == null || typeof body !== "object") {
+        return { decision: null };
+    }
+
+    return {
+        requestId: body.request_id != null ? String(body.request_id) : undefined,
+        decision: body as AdDecision
+    };
+}
+
+function scanAttempt(
+    endpoint: ScanAttempt["endpoint"],
+    decisions: AdDecision[],
+    visibleGuildIds: boolean
+): ScanAttempt {
+    const bounties = filterBounties(decisions);
+
+    return {
+        endpoint,
+        visibleGuildIds,
+        returned: decisions.filter(decision => decision.creative != null).length,
+        bountyCount: bounties.length,
+        creativeTypes: decisions.map(decision => getCreativeType(decision) ?? null)
+    };
+}
+
+export async function fetchBounties(): Promise<LoadResult> {
+    clearLegacyGlobalState();
+
+    const clientAdSessionId = getAdSessionId();
+    const clientHeartbeatSessionId = await getHeartbeatSessionId();
+    const connectionType = getConnectionType();
+
+    const context: RequestContext = {
+        clientAdSessionId,
+        clientHeartbeatSessionId,
+        connectionType
+    };
+
+    const attempts: ScanAttempt[] = [];
+
+    // This is the exact Quest Home Bounty endpoint used by Discord mobile.
+    const multi = await fetchQuestHomeBountyDecisions(context);
+    const multiBounties = filterBounties(multi.decisions);
+    attempts.push(scanAttempt("/quests/get-decisions", multi.decisions, false));
+
+    if (multiBounties.length > 0) {
+        console.info("[DesktopBounties] scan result", {
+            userId: currentUserId(),
+            placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
+            source: "get-decisions",
+            hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
+            connectionType,
+            attempts
+        });
+
+        return {
+            requestId: multi.requestId,
+            decisions: multi.decisions,
+            bounties: multiBounties,
+            clientAdSessionId,
+            clientHeartbeatSessionId,
+            source: "get-decisions",
+            attempts
+        };
+    }
+
+    // Desktop's QuestActionCreators also uses /quests/decision and explicitly
+    // supports BOUNTY creatives. Try the native desktop delivery path as a
+    // fallback when the mobile carousel endpoint returns no Bounties.
+    const single = await fetchSingleQuestDecision(context);
+    const singleDecisions = single.decision ? [single.decision] : [];
+    const singleBounties = filterBounties(singleDecisions);
+    attempts.push(scanAttempt("/quests/decision", singleDecisions, false));
+
+    if (singleBounties.length > 0) {
+        console.info("[DesktopBounties] scan result", {
+            userId: currentUserId(),
+            placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
+            source: "quests-decision",
+            hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
+            connectionType,
+            attempts
+        });
+
+        return {
+            requestId: single.requestId,
+            decisions: singleDecisions,
+            bounties: singleBounties,
+            clientAdSessionId,
+            clientHeartbeatSessionId,
+            source: "quests-decision",
+            attempts
+        };
+    }
+
+    // Discord conditionally includes visible_guild_ids in /quests/decision for
+    // less-personalized delivery. Try that legitimate request shape as a final
+    // fallback rather than spoofing mobile client identity or account targeting.
+    const guildIds = getGuildIds();
+    if (guildIds.length > 0) {
+        const singleWithGuilds = await fetchSingleQuestDecision(context, guildIds);
+        const singleWithGuildsDecisions = singleWithGuilds.decision ? [singleWithGuilds.decision] : [];
+        const singleWithGuildsBounties = filterBounties(singleWithGuildsDecisions);
+        attempts.push(scanAttempt("/quests/decision", singleWithGuildsDecisions, true));
+
+        if (singleWithGuildsBounties.length > 0) {
+            console.info("[DesktopBounties] scan result", {
+                userId: currentUserId(),
+                placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
+                source: "quests-decision",
+                hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
+                connectionType,
+                attempts
+            });
+
+            return {
+                requestId: singleWithGuilds.requestId,
+                decisions: singleWithGuildsDecisions,
+                bounties: singleWithGuildsBounties,
+                clientAdSessionId,
+                clientHeartbeatSessionId,
+                source: "quests-decision",
+                attempts
+            };
+        }
+    }
 
     console.info("[DesktopBounties] scan result", {
         userId: currentUserId(),
         placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
-        requested: MAX_DECISIONS,
-        returned: decisions.length,
-        bounties: bounties.length,
+        source: "none",
         hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
         connectionType,
-        decisions: decisions.map((decision, index) => ({
-            index,
-            type: getCreativeType(decision) ?? null,
-            creativeId: getBountyContent(decision)?.id
-                ?? decision.ad_identifiers?.creative_id
-                ?? decision.ad_identifiers?.ad_content_id
-                ?? null,
-            hasCreative: decision.creative != null
-        }))
+        attempts
     });
 
     return {
-        requestId: body.request_id,
-        decisions,
-        bounties,
+        requestId: multi.requestId,
+        decisions: multi.decisions,
+        bounties: [],
         clientAdSessionId,
-        clientHeartbeatSessionId
+        clientHeartbeatSessionId,
+        source: "none",
+        attempts
     };
 }
 
 export async function fetchOrbBalance(): Promise<number | null> {
     const response = await RestAPI.get({ url: "/users/@me/virtual-currency/balance" });
     const value = Number(response?.body?.balance);
+
     return Number.isFinite(value) ? value : null;
 }
 
@@ -346,12 +540,15 @@ export async function claimBounty(decision: AdDecision, clientAdSessionId: strin
     const content = getBountyContent(decision);
     if (!content?.id) throw new Error("Missing Bounty creative ID");
 
-    const body: Record<string, string> = { client_ad_session_id: clientAdSessionId };
-    const clientHeartbeatSessionId = await getHeartbeatSessionId();
+    const body: Record<string, string | null> = {
+        client_ad_session_id: clientAdSessionId,
+        client_heartbeat_session_id: null,
+        decision_metadata_sealed: decision.metadata_sealed ?? null,
+        traffic_metadata_sealed: decision.traffic_metadata_sealed ?? null
+    };
 
+    const clientHeartbeatSessionId = await getHeartbeatSessionId();
     if (clientHeartbeatSessionId) body.client_heartbeat_session_id = clientHeartbeatSessionId;
-    if (decision.metadata_sealed) body.decision_metadata_sealed = decision.metadata_sealed;
-    if (decision.traffic_metadata_sealed) body.traffic_metadata_sealed = decision.traffic_metadata_sealed;
 
     await RestAPI.post({
         url: `/quests/creatives/${content.id}/claim-reward`,
