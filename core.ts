@@ -119,12 +119,17 @@ interface DecisionsResponse {
     decisions?: AdDecision[];
 }
 
+interface DiscordResponse<T> {
+    status?: number;
+    body?: T;
+}
+
 export interface LoadResult {
     userId: string;
     requestId?: string;
     decisions: AdDecision[];
     bounties: AdDecision[];
-    source: "get-decisions" | "none";
+    source: "get-decisions" | "quest-decision" | "none";
 }
 
 interface StoredAdSession {
@@ -394,15 +399,16 @@ function makeRequestContext(connectionType: unknown): Record<string, unknown> | 
     return connectionType == null ? undefined : { connection_type: connectionType };
 }
 
-function assertSuccessfulResponse(response: any) {
-    const status = Number(response?.status);
+function assertSuccessfulResponse<T>(response: DiscordResponse<T>) {
+    const status = Number(response.status);
     if (!Number.isFinite(status) || status < 400) return;
 
-    const error = new Error(response?.body?.message || `Discord request failed with HTTP ${status}`) as Error & {
+    const body = response.body as { message?: string; } | undefined;
+    const error = new Error(body?.message || `Discord request failed with HTTP ${status}`) as Error & {
         body?: unknown;
         status?: number;
     };
-    error.body = response?.body;
+    error.body = response.body;
     error.status = status;
     throw error;
 }
@@ -453,6 +459,39 @@ async function fetchQuestHomeBountyDecisions(context: RequestContext): Promise<{
     };
 }
 
+async function fetchDesktopBountyDecision(context: RequestContext): Promise<{
+    requestId?: string;
+    decision: AdDecision | null;
+}> {
+    const query: Record<string, string | number> = {
+        placement: getBountyPlacement(),
+        client_ad_session_id: context.clientAdSessionId
+    };
+
+    if (context.clientHeartbeatSessionId) {
+        query.client_heartbeat_session_id = context.clientHeartbeatSessionId;
+    }
+
+    const response = await RestAPI.get({
+        url: "/quests/decision",
+        query,
+        rejectWithError: false,
+        context: makeRequestContext(context.connectionType)
+    });
+    assertSuccessfulResponse(response);
+
+    const body = response.body;
+    if (body == null || typeof body !== "object") {
+        return { decision: null };
+    }
+
+    const decision = body as AdDecision;
+    return {
+        requestId: decision.request_id != null ? String(decision.request_id) : undefined,
+        decision
+    };
+}
+
 async function performBountyFetch(userId: string): Promise<LoadResult> {
     clearLegacyGlobalStateOnce();
     assertCurrentUser(userId);
@@ -468,27 +507,36 @@ async function performBountyFetch(userId: string): Promise<LoadResult> {
         connectionType
     };
 
-    // Mirror the current Discord Android Quest Home Bounty delivery request.
+    // Primary path: the Bounty list endpoint used by Quest Home.
     const response = await fetchQuestHomeBountyDecisions(context);
     assertCurrentUser(userId);
 
     const bounties = filterBounties(response.decisions, userId);
+    if (bounties.length > 0) {
+        return {
+            userId,
+            requestId: response.requestId,
+            decisions: response.decisions,
+            bounties,
+            source: "get-decisions"
+        };
+    }
 
-    console.debug("[DesktopBounties] scan", {
-        placement: getBountyPlacement(),
-        requested: DECISION_BATCH_SIZE,
-        returned: response.decisions.length,
-        bounties: bounties.length,
-        hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
-        creativeTypes: response.decisions.map(decision => getCreativeType(decision) ?? null)
-    });
+    // Safe fallback: current desktop Discord also supports BOUNTY creatives on
+    // /quests/decision. This keeps the same native client identity and only runs
+    // when the list endpoint did not return a Bounty.
+    const fallback = await fetchDesktopBountyDecision(context);
+    assertCurrentUser(userId);
+
+    const fallbackDecisions = fallback.decision ? [fallback.decision] : [];
+    const fallbackBounties = filterBounties(fallbackDecisions, userId);
 
     return {
         userId,
-        requestId: response.requestId,
-        decisions: response.decisions,
-        bounties,
-        source: bounties.length > 0 ? "get-decisions" : "none"
+        requestId: fallback.requestId ?? response.requestId,
+        decisions: fallbackBounties.length > 0 ? fallbackDecisions : response.decisions,
+        bounties: fallbackBounties,
+        source: fallbackBounties.length > 0 ? "quest-decision" : "none"
     };
 }
 
@@ -498,13 +546,17 @@ export function invalidateBountyCache(userId: string) {
 
 function refreshFilteredResult(result: LoadResult, userId: string): LoadResult {
     const bounties = filterBounties(result.decisions, userId);
+    const unchanged = bounties.length === result.bounties.length
+        && bounties.every((decision, index) =>
+            getBountyContent(decision)?.id === getBountyContent(result.bounties[index])?.id
+        );
 
-    if (bounties === result.bounties) return result;
+    if (unchanged) return result;
 
     return {
         ...result,
         bounties,
-        source: bounties.length > 0 ? "get-decisions" : "none"
+        source: bounties.length > 0 ? result.source : "none"
     };
 }
 
