@@ -459,11 +459,13 @@ async function fetchQuestHomeBountyDecisions(context: RequestContext): Promise<{
         query.client_heartbeat_session_id = context.clientHeartbeatSessionId;
     }
 
-    const request = {
+    const request: Parameters<typeof RestAPI.get>[0] & {
+        context?: Record<string, unknown>;
+    } = {
         url: "/quests/get-decisions",
-        query,
-        context: makeRequestContext(context.connectionType)
+        query
     };
+    request.context = makeRequestContext(context.connectionType);
 
     const response = await RestAPI.get(request);
     assertSuccessfulResponse(response);
@@ -488,11 +490,15 @@ async function fetchDesktopBountyDecision(context: RequestContext): Promise<{
         query.client_heartbeat_session_id = context.clientHeartbeatSessionId;
     }
 
-    const response = await RestAPI.get({
+    const request: Parameters<typeof RestAPI.get>[0] & {
+        context?: Record<string, unknown>;
+    } = {
         url: "/quests/decision",
-        query,
-        context: makeRequestContext(context.connectionType)
-    });
+        query
+    };
+    request.context = makeRequestContext(context.connectionType);
+
+    const response = await RestAPI.get(request);
     assertSuccessfulResponse(response);
 
     const body = response.body;
