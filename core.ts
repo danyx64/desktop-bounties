@@ -258,10 +258,6 @@ function readClaimedIds(): Set<string> {
     }
 }
 
-function isLocallyClaimed(id: string): boolean {
-    return readClaimedIds().has(id);
-}
-
 export function rememberClaimed(id: string) {
     try {
         const ids = readClaimedIds();
