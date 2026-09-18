@@ -1,3 +1,9 @@
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2026 danyx64
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 import { LocaleStore } from "@webpack/common";
 
 const EN_US = {
@@ -290,9 +296,30 @@ export function msg(key: MessageKey, values: Record<string, string | number> = {
     return value;
 }
 
+const numberFormatters = new Map<string, Intl.NumberFormat>();
+const percentFormatters = new Map<string, Intl.NumberFormat>();
+
+function getNumberFormatter(locale: string): Intl.NumberFormat {
+    let formatter = numberFormatters.get(locale);
+    if (!formatter) {
+        formatter = new Intl.NumberFormat(locale);
+        numberFormatters.set(locale, formatter);
+    }
+    return formatter;
+}
+
+function getPercentFormatter(locale: string): Intl.NumberFormat {
+    let formatter = percentFormatters.get(locale);
+    if (!formatter) {
+        formatter = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 });
+        percentFormatters.set(locale, formatter);
+    }
+    return formatter;
+}
+
 export function formatNumber(value: number, locale = getBountyLocale()): string {
     try {
-        return new Intl.NumberFormat(locale).format(value);
+        return getNumberFormatter(locale).format(value);
     } catch {
         return String(value);
     }
@@ -300,7 +327,7 @@ export function formatNumber(value: number, locale = getBountyLocale()): string 
 
 export function formatPercent(value: number, locale = getBountyLocale()): string {
     try {
-        return new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 }).format(value / 100);
+        return getPercentFormatter(locale).format(value / 100);
     } catch {
         return `${Math.round(value)}%`;
     }
