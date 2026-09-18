@@ -32,12 +32,6 @@
     box-sizing: border-box;
 }
 
-/* Keep the Home shortcut on Discord's own generated classes. */
-.vc-desktop-bounties-navShell,
-.vc-desktop-bounties-navLink {
-    font: inherit;
-}
-
 .vc-desktop-bounties-pageInner {
     width: min(1200px, calc(100% - 64px));
     margin: 0 auto;
@@ -371,8 +365,7 @@
 }
 
 .vc-desktop-bounties-primaryButton:focus-visible,
-.vc-desktop-bounties-secondaryButton:focus-visible,
-.vc-desktop-bounties-navLink:focus-visible {
+.vc-desktop-bounties-secondaryButton:focus-visible {
     outline: 2px solid var(--vc-db-brand);
     outline-offset: 2px;
 }
