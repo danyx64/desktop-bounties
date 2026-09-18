@@ -328,6 +328,7 @@ export function getBountyContent(decision: AdDecision): BountyCreativeContent | 
 
 function filterBounties(decisions: AdDecision[]): AdDecision[] {
     const seen = new Set<string>();
+    const claimed = readClaimedIds();
     const bounties: AdDecision[] = [];
 
     for (const decision of decisions) {
@@ -335,7 +336,7 @@ function filterBounties(decisions: AdDecision[]): AdDecision[] {
         if (
             getCreativeType(decision) !== BOUNTY_CREATIVE_TYPE
             || content?.id == null
-            || isLocallyClaimed(content.id)
+            || claimed.has(content.id)
             || seen.has(content.id)
         ) continue;
 
@@ -439,13 +440,11 @@ async function fetchQuestHomeBountyDecisions(context: RequestContext): Promise<{
     };
 }
 
-function scanAttempt(decisions: AdDecision[]): ScanAttempt {
-    const bounties = filterBounties(decisions);
-
+function scanAttempt(decisions: AdDecision[], bountyCount: number): ScanAttempt {
     return {
         endpoint: "/quests/get-decisions",
         returned: decisions.length,
-        bountyCount: bounties.length,
+        bountyCount,
         creativeTypes: decisions.map(decision => getCreativeType(decision) ?? null)
     };
 }
@@ -468,7 +467,7 @@ async function performBountyFetch(): Promise<LoadResult> {
     // five requested decisions, native ad/heartbeat sessions and network context.
     const response = await fetchQuestHomeBountyDecisions(context);
     const bounties = filterBounties(response.decisions);
-    const attempts = [scanAttempt(response.decisions)];
+    const attempts = [scanAttempt(response.decisions, bounties.length)];
 
     console.info("[DesktopBounties] scan result", {
         userId: currentUserId(),
@@ -505,13 +504,6 @@ export function fetchBounties(): Promise<LoadResult> {
     });
 
     return bountyFetchInFlight;
-}
-
-export async function fetchOrbBalance(): Promise<number | null> {
-    const response = await RestAPI.get({ url: "/users/@me/virtual-currency/balance" });
-    const value = Number(response?.body?.balance);
-
-    return Number.isFinite(value) ? value : null;
 }
 
 export async function claimBounty(decision: AdDecision) {
