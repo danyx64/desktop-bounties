@@ -34,6 +34,12 @@ const NativeHeartbeatSession = mapMangledModuleLazy("LAST_CLIENT_HEARTBEAT_SESSI
     getSession?: (updateGateway?: boolean) => Promise<DiscordSession | null>;
 };
 
+const NativeAdSession = mapMangledModuleLazy("AD_SESSION_RESET", {
+    getOrRefreshAdSession: filters.byCode("createdAtTimestamp", "lastUsedTimestamp", "AD_SESSION_RESET")
+}) as {
+    getOrRefreshAdSession?: (updateLastUsed?: boolean) => DiscordSession | null;
+};
+
 const NetworkStore = findStoreLazy("NetworkStore") as {
     getType?: () => unknown;
 };
@@ -190,6 +196,13 @@ function getFallbackAdSessionId(): string {
 }
 
 export function getAdSessionId(): string {
+    try {
+        const native = NativeAdSession.getOrRefreshAdSession?.();
+        if (native?.uuid) return native.uuid;
+    } catch (error) {
+        console.warn("[DesktopBounties] Could not reuse Discord ad session", error);
+    }
+
     return getFallbackAdSessionId();
 }
 
