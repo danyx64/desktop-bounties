@@ -5,7 +5,7 @@
  */
 
 import ErrorBoundary from "@components/ErrorBoundary";
-import { filters, findComponentByCodeLazy, findCssClassesLazy, mapMangledModuleLazy } from "@webpack";
+import { filters, findComponentByCodeLazy, mapMangledModuleLazy } from "@webpack";
 import { FluxDispatcher, LocaleStore, NavigationRouter, React, UserStore, useStateFromStores } from "@webpack/common";
 
 import {
@@ -27,19 +27,6 @@ import {
 import { formatNumber, formatPercent, msg } from "./i18n";
 
 type ClaimState = "idle" | "claiming" | "error";
-
-const NavWrapperClasses = findCssClassesLazy("wrapper", "withGradient", "badge");
-const ShortcutClasses = findCssClassesLazy(
-    "channel",
-    "interactive",
-    "interactiveSelected",
-    "link",
-    "linkButton",
-    "linkButtonIcon",
-    "avatarWithText"
-);
-const InteractionClasses = findCssClassesLazy("interactive", "selected");
-const LayoutClasses = findCssClassesLazy("layout", "avatar", "content", "nameAndDecorators", "name");
 
 const HlsRuntime = mapMangledModuleLazy("ManagedMediaSource", {
     loadHls: filters.byCode(".then(", ".default"),
@@ -63,6 +50,13 @@ function BountyIcon({ className = "" }: { className?: string; }) {
         </svg>
     );
 }
+
+const NativeHomeShortcut = findComponentByCodeLazy<any>(
+    "nitroHoverGradient",
+    "showHoverGradient",
+    "hoverGradientStart",
+    "interactiveClassName"
+);
 
 const NativeOrbBalanceMenu = findComponentByCodeLazy<any>(
     "BalanceWidgetMenu",
@@ -246,46 +240,16 @@ function BountiesNavItemInner() {
         };
     }, []);
 
-    const interactiveClassName = [
-        InteractionClasses.interactive,
-        ShortcutClasses.interactive,
-        ShortcutClasses.linkButton,
-        active ? ShortcutClasses.interactiveSelected : null,
-        active ? InteractionClasses.selected : null
-    ].filter(Boolean).join(" ");
-
     return (
-        <div
-            className={`${NavWrapperClasses.wrapper} vc-desktop-bounties-navShell${active ? " vc-desktop-bounties-navShell-active" : ""}`}
-            data-vc-desktop-bounties-nav="true"
-        >
-            <li className={ShortcutClasses.channel} role="listitem">
-                <div className={interactiveClassName}>
-                    <a
-                        className={`${ShortcutClasses.link} vc-desktop-bounties-navLink`}
-                        data-list-item-id="private-channels-uid_11___bounties"
-                        tabIndex={-1}
-                        href={BOUNTIES_ROUTE}
-                        aria-current={active ? "page" : undefined}
-                        onClick={event => {
-                            event.preventDefault();
-                            openBountiesPage();
-                        }}
-                    >
-                        <div className={`${LayoutClasses.layout} ${ShortcutClasses.avatarWithText}`}>
-                            <div className={LayoutClasses.avatar}>
-                                <BountyIcon className={ShortcutClasses.linkButtonIcon} />
-                            </div>
-                            <div className={LayoutClasses.content}>
-                                <div className={LayoutClasses.nameAndDecorators}>
-                                    <div className={LayoutClasses.name}>{msg("navBounties", {}, locale)}</div>
-                                </div>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-            </li>
-        </div>
+        <NativeHomeShortcut
+            route={BOUNTIES_ROUTE}
+            selected={active}
+            icon={BountyIcon}
+            text={msg("navBounties", {}, locale)}
+            role="listitem"
+            data-list-item-id="private-channels-uid_11___bounties"
+            aria-current={active ? "page" : undefined}
+        />
     );
 }
 
