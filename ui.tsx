@@ -392,7 +392,7 @@ function BountyCard({
                     <div className="vc-desktop-bounties-mediaFallback"><BountyIcon /></div>
                 )}
 
-                <span className={`vc-desktop-bounties-statusPill${wholeSeconds > 0 ? " vc-desktop-bounties-statusPill--progress" : ""}`}>
+                <span className={`vc-desktop-bounties-statusPill${wholeSeconds > 0 ? " vc-desktop-bounties-statusPill-progress" : ""}`}>
                     {msg(wholeSeconds > 0 ? "statusProgress" : "statusAvailable", {}, locale)}
                 </span>
             </div>
@@ -565,12 +565,17 @@ function BountiesPage() {
             <main className="vc-desktop-bounties-pageInner">
                 <section className="vc-desktop-bounties-section">
                     <div className="vc-desktop-bounties-sectionHeader">
-                        <div className="vc-desktop-bounties-headingCopy">
-                            <div className="vc-desktop-bounties-sectionTitleRow">
-                                <h1>{msg("titleAvailable", {}, locale)}</h1>
-                                <span className="vc-desktop-bounties-sectionCount">{formatNumber(bounties.length, locale)}</span>
+                        <div className="vc-desktop-bounties-headerLead">
+                            <div className="vc-desktop-bounties-headerIcon" aria-hidden="true">
+                                <BountyIcon />
                             </div>
-                            <p>{msg("subtitleAvailable", {}, locale)}</p>
+                            <div className="vc-desktop-bounties-headingCopy">
+                                <div className="vc-desktop-bounties-sectionTitleRow">
+                                    <h1>{msg("titleAvailable", {}, locale)}</h1>
+                                    <span className="vc-desktop-bounties-sectionCount">{formatNumber(bounties.length, locale)}</span>
+                                </div>
+                                <p>{msg("subtitleAvailable", {}, locale)}</p>
+                            </div>
                         </div>
 
                         <div className="vc-desktop-bounties-nativeOrb">
