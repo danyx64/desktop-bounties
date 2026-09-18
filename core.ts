@@ -9,11 +9,24 @@ import { NavigationRouter, RestAPI, UserStore } from "@webpack/common";
 
 // Resolve Discord's own enums at runtime. Numeric fallbacks are only used if
 // Discord renames/removes the exported enum module.
-const AdPlacement = findByPropsLazy("VIDEO_MODAL_MOBILE", "QUEST_HOME_MOBILE_CAROUSEL") as {
+const AdPlacement = findByPropsLazy(
+    "INVALID_PLACEMENT",
+    "DESKTOP_ACCOUNT_PANEL_AREA",
+    "QUEST_HOME_MOBILE_CAROUSEL",
+    "VIDEO_MODAL_MOBILE"
+) as {
     VIDEO_MODAL_MOBILE?: number;
+    [key: string | number]: string | number | undefined;
 };
-const AdCreativeType = findByPropsLazy("BOUNTY", "QUEST_HOME_HERO", "NO_FILL") as {
+const AdCreativeType = findByPropsLazy(
+    "INVALID",
+    "QUEST",
+    "QUEST_HOME_HERO",
+    "BOUNTY",
+    "NO_FILL"
+) as {
     BOUNTY?: number;
+    [key: string | number]: string | number | undefined;
 };
 
 const FALLBACK_BOUNTY_PLACEMENT = 5;
@@ -359,14 +372,18 @@ export function getCreativeType(decision: AdDecision): number | undefined {
 
 function getBountyPlacement(): number {
     const placement = Number(AdPlacement.VIDEO_MODAL_MOBILE);
-    return Number.isInteger(placement) && placement > 0
+    return Number.isInteger(placement)
+        && placement > 0
+        && AdPlacement[placement] === "VIDEO_MODAL_MOBILE"
         ? placement
         : FALLBACK_BOUNTY_PLACEMENT;
 }
 
 function getBountyCreativeType(): number {
     const creativeType = Number(AdCreativeType.BOUNTY);
-    return Number.isInteger(creativeType) && creativeType > 0
+    return Number.isInteger(creativeType)
+        && creativeType > 0
+        && AdCreativeType[creativeType] === "BOUNTY"
         ? creativeType
         : FALLBACK_BOUNTY_CREATIVE_TYPE;
 }
