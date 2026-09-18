@@ -5,33 +5,13 @@
  */
 
 import { filters, findByPropsLazy, findStoreLazy, mapMangledModuleLazy } from "@webpack";
-import { NavigationRouter, RestAPI, UserStore } from "@webpack/common";
+import { LocaleStore, NavigationRouter, RestAPI, UserStore } from "@webpack/common";
 
-// Resolve Discord's own enums at runtime. Numeric fallbacks are only used if
-// Discord renames/removes the exported enum module.
-const AdPlacement = findByPropsLazy(
-    "INVALID_PLACEMENT",
-    "DESKTOP_ACCOUNT_PANEL_AREA",
-    "QUEST_HOME_MOBILE_CAROUSEL",
-    "VIDEO_MODAL_MOBILE"
-) as {
-    VIDEO_MODAL_MOBILE?: number;
-    [key: string | number]: string | number | undefined;
-};
-const AdCreativeType = findByPropsLazy(
-    "INVALID",
-    "QUEST",
-    "QUEST_HOME_HERO",
-    "BOUNTY",
-    "NO_FILL"
-) as {
-    BOUNTY?: number;
-    [key: string | number]: string | number | undefined;
-};
-
-const FALLBACK_BOUNTY_PLACEMENT = 5;
-const FALLBACK_BOUNTY_CREATIVE_TYPE = 3;
-const DECISION_BATCH_SIZE = 5;
+// Current Discord mobile Quest Home fetches Bounties through VIDEO_MODAL_MOBILE (5).
+// QUEST_HOME_MOBILE_CAROUSEL (4) still exists in the enum, but the current hook does not use it for Bounty delivery.
+export const BOUNTY_VIDEO_MODAL_MOBILE_PLACEMENT = 5;
+export const BOUNTY_CREATIVE_TYPE = 3;
+export const MAX_DECISIONS = 5;
 export const BOUNTIES_ROUTE_PARAM = "vc_bounties";
 export const BOUNTIES_ROUTE = `/quest-home?${BOUNTIES_ROUTE_PARAM}=1`;
 
@@ -83,6 +63,19 @@ const NetworkStore = findStoreLazy("NetworkStore") as {
 };
 
 
+const AnalyticsUtils = findByPropsLazy(
+    "getSuperProperties",
+    "getSuperPropertiesBase64",
+    "extendSuperProperties"
+) as {
+    getSuperProperties?: () => Record<string, unknown>;
+};
+
+const MOBILE_CLIENT_VERSION = "347.4 - rn";
+const MOBILE_CLIENT_BUILD_NUMBER = 6453;
+const MOBILE_NATIVE_BUILD_NUMBER = 347204;
+const MOBILE_RELEASE_CHANNEL = "googleRelease";
+
 export interface BountyCTA {
     url?: string;
     button_label?: string;
@@ -132,9 +125,11 @@ interface DecisionsResponse {
     decisions?: AdDecision[];
 }
 
-interface DiscordResponse<T> {
-    status?: number;
-    body?: T;
+export interface ScanAttempt {
+    endpoint: "/quests/get-decisions";
+    returned: number;
+    bountyCount: number;
+    creativeTypes: Array<number | null>;
 }
 
 export interface LoadResult {
@@ -142,7 +137,10 @@ export interface LoadResult {
     requestId?: string;
     decisions: AdDecision[];
     bounties: AdDecision[];
-    source: "get-decisions" | "quest-decision" | "none";
+    clientAdSessionId: string;
+    clientHeartbeatSessionId?: string;
+    source: "get-decisions" | "none";
+    attempts: ScanAttempt[];
 }
 
 interface StoredAdSession {
@@ -370,24 +368,6 @@ export function getCreativeType(decision: AdDecision): number | undefined {
         ?? decision.ad_identifiers?.creative_type;
 }
 
-function getBountyPlacement(): number {
-    const placement = Number(AdPlacement.VIDEO_MODAL_MOBILE);
-    return Number.isInteger(placement)
-        && placement > 0
-        && AdPlacement[placement] === "VIDEO_MODAL_MOBILE"
-        ? placement
-        : FALLBACK_BOUNTY_PLACEMENT;
-}
-
-function getBountyCreativeType(): number {
-    const creativeType = Number(AdCreativeType.BOUNTY);
-    return Number.isInteger(creativeType)
-        && creativeType > 0
-        && AdCreativeType[creativeType] === "BOUNTY"
-        ? creativeType
-        : FALLBACK_BOUNTY_CREATIVE_TYPE;
-}
-
 export function getBountyContent(decision: AdDecision): BountyCreativeContent | undefined {
     return decision.creative?.creative_content;
 }
@@ -399,7 +379,7 @@ function filterBounties(decisions: AdDecision[], userId: string): AdDecision[] {
     for (const decision of decisions) {
         const content = getBountyContent(decision);
         if (
-            getCreativeType(decision) !== getBountyCreativeType()
+            getCreativeType(decision) !== BOUNTY_CREATIVE_TYPE
             || content?.id == null
             || isRecentlyClaimed(userId, content.id)
             || seen.has(content.id)
@@ -416,16 +396,15 @@ function makeRequestContext(connectionType: unknown): Record<string, unknown> | 
     return connectionType == null ? undefined : { connection_type: connectionType };
 }
 
-function assertSuccessfulResponse<T>(response: DiscordResponse<T>) {
-    const status = Number(response.status);
+function assertSuccessfulResponse(response: any) {
+    const status = Number(response?.status);
     if (!Number.isFinite(status) || status < 400) return;
 
-    const body = response.body as { message?: string; } | undefined;
-    const error = new Error(body?.message || `Discord request failed with HTTP ${status}`) as Error & {
+    const error = new Error(response?.body?.message || `Discord request failed with HTTP ${status}`) as Error & {
         body?: unknown;
         status?: number;
     };
-    error.body = response.body;
+    error.body = response?.body;
     error.status = status;
     throw error;
 }
@@ -441,33 +420,87 @@ function getBountyCacheDuration(decisions: AdDecision[]): number {
     return Math.min(MAX_BOUNTY_CACHE_MS, Math.max(MIN_BOUNTY_CACHE_MS, ttlMs));
 }
 
-// Requests intentionally use Discord's native RestAPI headers. Do not spoof
-// X-Super-Properties: the same account/token should keep one consistent client
-// identity across normal Discord traffic and Bounty traffic.
+function encodeBase64Json(value: unknown): string {
+    const bytes = new TextEncoder().encode(JSON.stringify(value));
+    let binary = "";
+
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+}
+
+function getMobileSuperPropertiesBase64(): string | undefined {
+    try {
+        const current = AnalyticsUtils.getSuperProperties?.() ?? {};
+        const mobile: Record<string, unknown> = {
+            ...current,
+            os: "Android",
+            browser: "Discord Android",
+            device: "Android",
+            system_locale: LocaleStore.locale || navigator.language || "en-US",
+            client_version: MOBILE_CLIENT_VERSION,
+            release_channel: MOBILE_RELEASE_CHANNEL,
+            client_build_number: MOBILE_CLIENT_BUILD_NUMBER,
+            native_build_number: MOBILE_NATIVE_BUILD_NUMBER,
+            design_id: 2,
+            client_event_source: null
+        };
+
+        // Electron-only fields conflict with the Android identity Discord mobile
+        // sends in X-Super-Properties, so do not carry them into this request.
+        for (const key of [
+            "os_arch",
+            "app_arch",
+            "window_manager",
+            "distro",
+            "runtime_environment",
+            "display_server",
+            "os_sdk_version"
+        ]) {
+            delete mobile[key];
+        }
+
+        return encodeBase64Json(mobile);
+    } catch (error) {
+        console.warn("[DesktopBounties] Could not build mobile super properties", error);
+        return undefined;
+    }
+}
+
+function attachMobileDeliveryHeaders(request: any) {
+    const mobileSuperProperties = getMobileSuperPropertiesBase64();
+    if (!mobileSuperProperties) return;
+
+    request.headers = {
+        ...(request.headers ?? {}),
+        "X-Super-Properties": mobileSuperProperties
+    };
+}
 
 async function fetchQuestHomeBountyDecisions(context: RequestContext): Promise<{
     requestId?: string;
     decisions: AdDecision[];
 }> {
     const query: Record<string, string | number> = {
-        placement: getBountyPlacement(),
+        placement: BOUNTY_VIDEO_MODAL_MOBILE_PLACEMENT,
         client_ad_session_id: context.clientAdSessionId,
-        num_decisions_requested: DECISION_BATCH_SIZE
+        num_decisions_requested: MAX_DECISIONS
     };
 
     if (context.clientHeartbeatSessionId) {
         query.client_heartbeat_session_id = context.clientHeartbeatSessionId;
     }
 
-    const request: Parameters<typeof RestAPI.get>[0] & {
-        context?: Record<string, unknown>;
-    } = {
+    const request: any = {
         url: "/quests/get-decisions",
-        query
+        query,
+        rejectWithError: false
     };
-    request.context = makeRequestContext(context.connectionType);
 
-    const response = await RestAPI.get(request);
+    const requestContext = makeRequestContext(context.connectionType);
+    if (requestContext) request.context = requestContext;
+    attachMobileDeliveryHeaders(request);
+
+    const response = await (RestAPI.get as any)(request);
     assertSuccessfulResponse(response);
     const body = (response?.body ?? {}) as DecisionsResponse;
 
@@ -477,39 +510,12 @@ async function fetchQuestHomeBountyDecisions(context: RequestContext): Promise<{
     };
 }
 
-async function fetchDesktopBountyDecision(context: RequestContext): Promise<{
-    requestId?: string;
-    decision: AdDecision | null;
-}> {
-    const query: Record<string, string | number> = {
-        placement: getBountyPlacement(),
-        client_ad_session_id: context.clientAdSessionId
-    };
-
-    if (context.clientHeartbeatSessionId) {
-        query.client_heartbeat_session_id = context.clientHeartbeatSessionId;
-    }
-
-    const request: Parameters<typeof RestAPI.get>[0] & {
-        context?: Record<string, unknown>;
-    } = {
-        url: "/quests/decision",
-        query
-    };
-    request.context = makeRequestContext(context.connectionType);
-
-    const response = await RestAPI.get(request);
-    assertSuccessfulResponse(response);
-
-    const { body } = response;
-    if (body == null || typeof body !== "object") {
-        return { decision: null };
-    }
-
-    const decision = body as AdDecision;
+function scanAttempt(decisions: AdDecision[], bountyCount: number): ScanAttempt {
     return {
-        requestId: decision.request_id != null ? String(decision.request_id) : undefined,
-        decision
+        endpoint: "/quests/get-decisions",
+        returned: decisions.length,
+        bountyCount,
+        creativeTypes: decisions.map(decision => getCreativeType(decision) ?? null)
     };
 }
 
@@ -528,36 +534,35 @@ async function performBountyFetch(userId: string): Promise<LoadResult> {
         connectionType
     };
 
-    // Primary path: the Bounty list endpoint used by Quest Home.
+    // Mirror the current Discord Android Quest Home Bounty delivery request.
     const response = await fetchQuestHomeBountyDecisions(context);
     assertCurrentUser(userId);
 
     const bounties = filterBounties(response.decisions, userId);
-    if (bounties.length > 0) {
-        return {
-            userId,
-            requestId: response.requestId,
-            decisions: response.decisions,
-            bounties,
-            source: "get-decisions"
-        };
-    }
+    const attempts = [scanAttempt(response.decisions, bounties.length)];
 
-    // Safe fallback: current desktop Discord also supports BOUNTY creatives on
-    // /quests/decision. This keeps the same native client identity and only runs
-    // when the list endpoint did not return a Bounty.
-    const fallback = await fetchDesktopBountyDecision(context);
-    assertCurrentUser(userId);
-
-    const fallbackDecisions = fallback.decision ? [fallback.decision] : [];
-    const fallbackBounties = filterBounties(fallbackDecisions, userId);
+    console.info("[DesktopBounties] scan result", {
+        userId,
+        endpoint: "/quests/get-decisions",
+        placement: BOUNTY_VIDEO_MODAL_MOBILE_PLACEMENT,
+        placementName: "VIDEO_MODAL_MOBILE",
+        requested: MAX_DECISIONS,
+        returned: response.decisions.length,
+        bounties: bounties.length,
+        hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
+        connectionType,
+        creativeTypes: response.decisions.map(decision => getCreativeType(decision) ?? null)
+    });
 
     return {
         userId,
-        requestId: fallback.requestId ?? response.requestId,
-        decisions: fallbackBounties.length > 0 ? fallbackDecisions : response.decisions,
-        bounties: fallbackBounties,
-        source: fallbackBounties.length > 0 ? "quest-decision" : "none"
+        requestId: response.requestId,
+        decisions: response.decisions,
+        bounties,
+        clientAdSessionId,
+        clientHeartbeatSessionId,
+        source: bounties.length > 0 ? "get-decisions" : "none",
+        attempts
     };
 }
 
@@ -567,17 +572,13 @@ export function invalidateBountyCache(userId: string) {
 
 function refreshFilteredResult(result: LoadResult, userId: string): LoadResult {
     const bounties = filterBounties(result.decisions, userId);
-    const unchanged = bounties.length === result.bounties.length
-        && bounties.every((decision, index) =>
-            getBountyContent(decision)?.id === getBountyContent(result.bounties[index])?.id
-        );
 
-    if (unchanged) return result;
+    if (bounties === result.bounties) return result;
 
     return {
         ...result,
         bounties,
-        source: bounties.length > 0 ? result.source : "none"
+        source: bounties.length > 0 ? "get-decisions" : "none"
     };
 }
 
@@ -633,10 +634,14 @@ export async function claimBounty(decision: AdDecision, userId: string) {
         client_heartbeat_session_id: clientHeartbeatSessionId ?? null
     };
 
-    const response = await RestAPI.post({
+    const request: any = {
         url: `/quests/creatives/${content.id}/claim-reward`,
-        body
-    });
+        body,
+        rejectWithError: false
+    };
+    attachMobileDeliveryHeaders(request);
+
+    const response = await (RestAPI.post as any)(request);
     assertSuccessfulResponse(response);
 
     rememberClaimed(userId, content.id);

@@ -28,33 +28,12 @@ import { formatNumber, formatPercent, msg } from "./i18n";
 
 type ClaimState = "idle" | "claiming" | "error";
 
-interface HlsErrorData {
-    fatal?: boolean;
-}
-
-interface HlsInstance {
-    loadSource(url: string): void;
-    attachMedia(media: HTMLMediaElement): void;
-    destroy(): void;
-    on(event: string, handler: (event: unknown, data: HlsErrorData) => void): void;
-}
-
-interface HlsConstructor {
-    new(config: Record<string, unknown>): HlsInstance;
-    isSupported(): boolean;
-    Events?: { ERROR?: string; };
-}
-
-interface NativeOrbBalanceMenuProps {
-    showNotificationBadge: boolean;
-    ctaText: string;
-    ctaOnClick: () => void;
-}
-
 const HlsRuntime = mapMangledModuleLazy("ManagedMediaSource", {
-    loadHls: filters.byCode(".then(", ".default")
+    loadHls: filters.byCode(".then(", ".default"),
+    canUseHls: filters.byCode("isTypeSupported")
 }) as {
-    loadHls: () => Promise<HlsConstructor>;
+    loadHls: () => Promise<any>;
+    canUseHls: () => boolean;
 };
 
 function BountyIcon({ className = "" }: { className?: string; }) {
@@ -85,7 +64,7 @@ const ShortcutClasses = findCssClassesLazy(
 const InteractionClasses = findCssClassesLazy("interactive", "selected");
 const LayoutClasses = findCssClassesLazy("layout", "avatar", "content", "nameAndDecorators", "name");
 
-const NativeOrbBalanceMenu = findComponentByCodeLazy<NativeOrbBalanceMenuProps>(
+const NativeOrbBalanceMenu = findComponentByCodeLazy<any>(
     "BalanceWidgetMenu",
     "showNotificationBadge",
     "balanceWidgetMode"
@@ -99,7 +78,8 @@ function FullBountyVideo({
     maxPlayableTime,
     onAvailable,
     onUnavailable,
-    onProgress
+    onProgress,
+    onEnded
 }: {
     hlsUrl: string;
     poster?: string;
@@ -108,6 +88,7 @@ function FullBountyVideo({
     onAvailable: () => void;
     onUnavailable: () => void;
     onProgress: (currentTime: number) => void;
+    onEnded: () => void;
 }) {
     const videoRef = React.useRef<HTMLVideoElement>(null);
     const [activated, setActivated] = React.useState(false);
@@ -160,7 +141,7 @@ function FullBountyVideo({
         if (!video) return;
 
         let cancelled = false;
-        let hls: HlsInstance | null = null;
+        let hls: any = null;
 
         const cleanupVideo = () => {
             try { video.pause(); } catch { }
@@ -182,7 +163,7 @@ function FullBountyVideo({
         void (async () => {
             try {
                 const Hls = await HlsRuntime.loadHls();
-                if (cancelled || !videoRef.current || !Hls.isSupported()) {
+                if (cancelled || !videoRef.current || !Hls?.isSupported?.()) {
                     if (!cancelled) onUnavailable();
                     return;
                 }
@@ -200,7 +181,7 @@ function FullBountyVideo({
                 onAvailable();
 
                 if (Hls.Events?.ERROR) {
-                    hls.on(Hls.Events.ERROR, (_event, data) => {
+                    hls.on(Hls.Events.ERROR, (_event: unknown, data: any) => {
                         if (!data?.fatal || cancelled) return;
                         try { hls?.destroy?.(); } catch { }
                         hls = null;
@@ -244,7 +225,7 @@ function FullBountyVideo({
                     video.currentTime = maxPlayableTime;
                 }
             }}
-            onEnded={event => onProgress(event.currentTarget.currentTime)}
+            onEnded={onEnded}
         />
     );
 }
@@ -403,6 +384,7 @@ function BountyCard({
                         onAvailable={() => setVideoAvailable(true)}
                         onUnavailable={() => setVideoAvailable(false)}
                         onProgress={handleProgress}
+                        onEnded={() => setMaxVideoProgressSeconds(targetSeconds)}
                     />
                 ) : image ? (
                     <img src={image} alt="" loading="lazy" />
