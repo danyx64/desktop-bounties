@@ -20,7 +20,7 @@ export default definePlugin({
         name: "danyx64",
         id: 1533113566075424881n
     }],
-    tags: ["Quests", "Utility"],
+    tags: ["Utility"],
 
     patches: [
         {
