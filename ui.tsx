@@ -495,28 +495,34 @@ function BountiesPage() {
     const [error, setError] = React.useState<string | null>(null);
     const [orbBalance, setOrbBalance] = React.useState<number | null>(null);
     const [orbLoading, setOrbLoading] = React.useState(true);
+    const loadInFlightRef = React.useRef(false);
+    const lastAutoRefreshRef = React.useRef(0);
 
-    const loadOrbBalance = React.useCallback(async () => {
+    const loadOrbBalance = React.useCallback(async (background = false) => {
         if (!currentUserId) {
             setOrbBalance(null);
             setOrbLoading(false);
             return;
         }
 
-        setOrbLoading(true);
+        if (!background) setOrbLoading(true);
+
         try {
             setOrbBalance(await fetchOrbBalance());
         } catch {
             setOrbBalance(null);
         } finally {
-            setOrbLoading(false);
+            if (!background) setOrbLoading(false);
         }
     }, [currentUserId]);
 
-    const load = React.useCallback(async () => {
-        if (!currentUserId) return;
+    const load = React.useCallback(async (background = false) => {
+        if (!currentUserId || loadInFlightRef.current) return;
 
-        setLoading(true);
+        loadInFlightRef.current = true;
+        lastAutoRefreshRef.current = Date.now();
+
+        if (!background) setLoading(true);
         setError(null);
 
         try {
@@ -525,15 +531,15 @@ function BountiesPage() {
             console.error("[DesktopBounties] Failed to fetch Bounties", err);
             setError(getErrorMessage(err));
         } finally {
-            setLoading(false);
+            if (!background) setLoading(false);
+            loadInFlightRef.current = false;
         }
 
-        void loadOrbBalance();
+        void loadOrbBalance(background);
     }, [currentUserId, loadOrbBalance]);
 
     // Discord's account switcher can keep the Quest Home React tree mounted.
-    // React to the actual UserStore change and rescan after the auth token has a
-    // brief moment to settle instead of keeping account A's empty result on B.
+    // Rescan after the new account token has had a moment to settle.
     React.useEffect(() => {
         setResult(null);
         setError(null);
@@ -546,10 +552,38 @@ function BountiesPage() {
         }
 
         const timeout = window.setTimeout(() => {
-            void load();
-        }, 400);
+            void load(false);
+        }, 500);
 
         return () => window.clearTimeout(timeout);
+    }, [currentUserId, load]);
+
+    // No manual refresh button: returning to Discord/the Bounties tab refreshes
+    // delivery automatically, while a short cooldown avoids duplicate API calls.
+    React.useEffect(() => {
+        if (!currentUserId) return;
+
+        const refreshIfVisible = () => {
+            if (document.visibilityState !== "visible" || !document.hasFocus()) return;
+
+            const now = Date.now();
+            if (now - lastAutoRefreshRef.current < 5000) return;
+
+            lastAutoRefreshRef.current = now;
+            void load(true);
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible") refreshIfVisible();
+        };
+
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        window.addEventListener("focus", refreshIfVisible);
+
+        return () => {
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+            window.removeEventListener("focus", refreshIfVisible);
+        };
     }, [currentUserId, load]);
 
     const bounties = result?.bounties ?? [];
@@ -575,15 +609,6 @@ function BountiesPage() {
                     <OrbIcon />
                     <strong>{orbLoading ? "…" : orbBalance != null ? orbBalance.toLocaleString() : "—"}</strong>
                     <span>Orbs</span>
-                </button>
-
-                <button
-                    type="button"
-                    className="vc-desktop-bounties-refreshButton vc-desktop-bounties-toolbarRefresh"
-                    disabled={loading || !currentUserId}
-                    onClick={() => void load()}
-                >
-                    {loading ? "Refreshing…" : "Refresh"}
                 </button>
             </div>
 
