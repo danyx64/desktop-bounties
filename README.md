@@ -20,13 +20,12 @@ The plugin mirrors Discord mobile's current Bounty delivery flow: `GET /quests/g
 - Uses the Bounty's **`video_hls` full stream** for playback
 - Does **not** substitute the short `video_preview` clip when the full stream is unavailable
 - Tracks the configured `reward_timer_seconds` only while the full HLS video is actually playing, Discord is visible, and the window is focused
-- Reuses the same client ad session for the decision and claim flow
+- Uses Discord's native ad session for both delivery and claim, refreshing/reusing it at claim time exactly like the mobile client
 - At the required watch time, sends Discord's creative reward claim request:
   `POST /quests/creatives/{creative_id}/claim-reward`
 - Includes sealed decision metadata when Discord supplies it
 - Removes a Bounty from the page after Discord accepts the claim
 - Refreshes Bounties and Orbs automatically when the Discord window/tab becomes active again
-- Refreshes the Orbs balance after a successful claim
 - Shows Discord's error and a retry button if a claim is rejected
 
 ## Full video behavior
