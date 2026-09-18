@@ -1,4 +1,4 @@
-import { filters, findStoreLazy, mapMangledModuleLazy } from "@webpack";
+import { filters, findByPropsLazy, findStoreLazy, mapMangledModuleLazy } from "@webpack";
 import { NavigationRouter, RestAPI, UserStore } from "@webpack/common";
 
 export const QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT = 4;
@@ -41,6 +41,18 @@ const NetworkStore = findStoreLazy("NetworkStore") as {
 const GuildStore = findStoreLazy("GuildStore") as {
     getGuilds?: () => Record<string, unknown>;
 };
+
+const AnalyticsUtils = findByPropsLazy(
+    "getSuperProperties",
+    "getSuperPropertiesBase64",
+    "extendSuperProperties"
+) as {
+    getSuperProperties?: () => Record<string, unknown>;
+};
+
+const MOBILE_CLIENT_VERSION = "347.4 - rn";
+const MOBILE_CLIENT_BUILD_NUMBER = 6453;
+const MOBILE_RELEASE_CHANNEL = "googleRelease";
 
 export interface BountyCTA {
     url?: string;
@@ -317,6 +329,61 @@ function makeRequestContext(connectionType: unknown): Record<string, unknown> | 
     return connectionType == null ? undefined : { connection_type: connectionType };
 }
 
+function encodeBase64Json(value: unknown): string {
+    const bytes = new TextEncoder().encode(JSON.stringify(value));
+    let binary = "";
+
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+}
+
+function getMobileSuperPropertiesBase64(): string | undefined {
+    try {
+        const current = AnalyticsUtils.getSuperProperties?.() ?? {};
+        const mobile: Record<string, unknown> = {
+            ...current,
+            os: "Android",
+            browser: "Discord Android",
+            device: "Android",
+            system_locale: navigator.language || "en-US",
+            client_version: MOBILE_CLIENT_VERSION,
+            release_channel: MOBILE_RELEASE_CHANNEL,
+            client_build_number: MOBILE_CLIENT_BUILD_NUMBER,
+            design_id: 2,
+            client_event_source: null
+        };
+
+        // Electron-only fields conflict with the Android identity Discord mobile
+        // sends in X-Super-Properties, so do not carry them into this request.
+        for (const key of [
+            "os_arch",
+            "app_arch",
+            "window_manager",
+            "distro",
+            "runtime_environment",
+            "display_server",
+            "os_sdk_version"
+        ]) {
+            delete mobile[key];
+        }
+
+        return encodeBase64Json(mobile);
+    } catch (error) {
+        console.warn("[DesktopBounties] Could not build mobile super properties", error);
+        return undefined;
+    }
+}
+
+function attachMobileDeliveryHeaders(request: any) {
+    const mobileSuperProperties = getMobileSuperPropertiesBase64();
+    if (!mobileSuperProperties) return;
+
+    request.headers = {
+        ...(request.headers ?? {}),
+        "X-Super-Properties": mobileSuperProperties
+    };
+}
+
 async function fetchQuestHomeBountyDecisions(context: RequestContext): Promise<{
     requestId?: string;
     decisions: AdDecision[];
@@ -339,6 +406,7 @@ async function fetchQuestHomeBountyDecisions(context: RequestContext): Promise<{
 
     const requestContext = makeRequestContext(context.connectionType);
     if (requestContext) request.context = requestContext;
+    attachMobileDeliveryHeaders(request);
 
     const response = await (RestAPI.get as any)(request);
     const body = (response?.body ?? {}) as DecisionsResponse;
@@ -377,6 +445,7 @@ async function fetchSingleQuestDecision(
 
     const requestContext = makeRequestContext(context.connectionType);
     if (requestContext) request.context = requestContext;
+    attachMobileDeliveryHeaders(request);
 
     const response = await (RestAPI.get as any)(request);
     const body = response?.body;
@@ -432,6 +501,7 @@ export async function fetchBounties(): Promise<LoadResult> {
             userId: currentUserId(),
             placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
             source: "get-decisions",
+            mobileIdentityHeader: Boolean(getMobileSuperPropertiesBase64()),
             hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
             connectionType,
             attempts
@@ -461,6 +531,7 @@ export async function fetchBounties(): Promise<LoadResult> {
             userId: currentUserId(),
             placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
             source: "quests-decision",
+            mobileIdentityHeader: Boolean(getMobileSuperPropertiesBase64()),
             hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
             connectionType,
             attempts
@@ -492,6 +563,7 @@ export async function fetchBounties(): Promise<LoadResult> {
                 userId: currentUserId(),
                 placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
                 source: "quests-decision",
+                mobileIdentityHeader: Boolean(getMobileSuperPropertiesBase64()),
                 hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
                 connectionType,
                 attempts
@@ -513,6 +585,7 @@ export async function fetchBounties(): Promise<LoadResult> {
         userId: currentUserId(),
         placement: QUEST_HOME_MOBILE_CAROUSEL_PLACEMENT,
         source: "none",
+        mobileIdentityHeader: Boolean(getMobileSuperPropertiesBase64()),
         hasHeartbeatSession: Boolean(clientHeartbeatSessionId),
         connectionType,
         attempts
@@ -550,10 +623,13 @@ export async function claimBounty(decision: AdDecision, clientAdSessionId: strin
     const clientHeartbeatSessionId = await getHeartbeatSessionId();
     if (clientHeartbeatSessionId) body.client_heartbeat_session_id = clientHeartbeatSessionId;
 
-    await RestAPI.post({
+    const request: any = {
         url: `/quests/creatives/${content.id}/claim-reward`,
         body
-    });
+    };
+    attachMobileDeliveryHeaders(request);
+
+    await (RestAPI.post as any)(request);
 
     rememberClaimed(content.id);
 }
