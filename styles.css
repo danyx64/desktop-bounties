@@ -1,8 +1,10 @@
 .vc-desktop-bounties-page {
-    --vc-db-bg: var(--background-base-lowest, var(--background-primary, #111214));
-    --vc-db-surface: var(--background-base-low, var(--background-secondary, #1e1f22));
-    --vc-db-surface-alt: var(--background-base-lower, var(--background-secondary-alt, #191a1d));
-    --vc-db-hover: var(--background-mod-subtle, var(--background-modifier-hover, rgb(255 255 255 / 6%)));
+    /* Match the greys visible in Discord's current Quest Home. */
+    --vc-db-bg: var(--background-primary, rgb(25 26 29));
+    --vc-db-toolbar: rgb(17 17 19);
+    --vc-db-surface: var(--background-secondary, rgb(35 36 40));
+    --vc-db-surface-alt: var(--background-secondary-alt, rgb(40 41 44));
+    --vc-db-hover: var(--background-modifier-hover, rgb(255 255 255 / 6%));
     --vc-db-border: var(--border-subtle, rgb(255 255 255 / 7%));
     --vc-db-border-strong: var(--border-strong, rgb(255 255 255 / 12%));
     --vc-db-text: var(--text-default, #dbdee1);
@@ -43,9 +45,17 @@
     justify-content: flex-end;
     padding: 0 18px;
     border-bottom: 1px solid var(--vc-db-border);
-    background: var(--vc-db-bg);
+    background: var(--vc-db-toolbar);
 }
 
+.vc-desktop-bounties-nativeOrb {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+/* Legacy custom pill styles are kept only as a fallback for old compiled
+ * clients. Current builds render Discord's own BalanceWidgetMenu component. */
 .vc-desktop-bounties-orbCounter {
     height: 32px;
     display: inline-flex;
