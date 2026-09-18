@@ -34,7 +34,7 @@ const NativeHeartbeatSession = mapMangledModuleLazy("LAST_CLIENT_HEARTBEAT_SESSI
     getSession?: (updateGateway?: boolean) => Promise<DiscordSession | null>;
 };
 
-const NativeAdSession = mapMangledModuleLazy("AD_SESSION_RESET", {
+const NativeAdSession = mapMangledModuleLazy("future facing timestamp Date.now()", {
     getOrRefreshAdSession: filters.byCode("createdAtTimestamp", "lastUsedTimestamp", "AD_SESSION_RESET")
 }) as {
     getOrRefreshAdSession?: (updateLastUsed?: boolean) => DiscordSession | null;
