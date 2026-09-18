@@ -10,7 +10,6 @@ import {
     BOUNTIES_ROUTE,
     claimBounty,
     fetchBounties,
-    getAdSessionId,
     getBountyContent,
     getErrorMessage,
     getSavedProgress,
@@ -288,11 +287,9 @@ export function BountiesNavItem() {
 
 function BountyCard({
     decision,
-    clientAdSessionId,
     onClaimed
 }: {
     decision: AdDecision;
-    clientAdSessionId: string;
     onClaimed: (id: string) => void;
 }) {
     const content = getBountyContent(decision);
@@ -331,7 +328,7 @@ function BountyCard({
             setClaimError(getErrorMessage(error));
             setClaimState("error");
         }
-    }, [claimState, decision, clientAdSessionId, content.id, onClaimed]);
+    }, [claimState, decision, content.id, onClaimed]);
 
     React.useEffect(() => {
         saveProgress(content.id, wholeSeconds);
@@ -559,7 +556,6 @@ function BountiesPage() {
     }, [currentUserId, load]);
 
     const bounties = result?.bounties ?? [];
-    const clientAdSessionId = result?.clientAdSessionId ?? getAdSessionId();
 
     const handleClaimed = React.useCallback((id: string) => {
         setResult(current => current == null ? current : {
@@ -612,7 +608,6 @@ function BountiesPage() {
                                 <BountyCard
                                     key={getBountyContent(decision)?.id ?? index}
                                     decision={decision}
-                                    clientAdSessionId={clientAdSessionId}
                                     onClaimed={handleClaimed}
                                 />
                             ))}
