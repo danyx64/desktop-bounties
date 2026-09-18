@@ -19,7 +19,6 @@ import {
     isBountiesRoute,
     LoadResult,
     mediaUrl,
-    openBountiesPage,
     openExternal,
     safeExternalUrl,
     saveProgress
