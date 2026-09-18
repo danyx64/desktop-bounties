@@ -2,7 +2,7 @@
 
 A Vencord userplugin that exposes Discord's **mobile Quest Home Bounty creatives** on desktop.
 
-The plugin requests Discord's authenticated Quest decision endpoint using the mobile Quest Home placement (`placement=4`) and renders returned Bounty creatives (`creative_type=3`) inside Discord's Quest Home route.
+The plugin mirrors Discord mobile's current Bounty delivery flow: `GET /quests/get-decisions` with `placement=5` (`VIDEO_MODAL_MOBILE`), `num_decisions_requested=5`, the native ad/heartbeat sessions, and the current connection type. Returned Bounty creatives use `creative_type=3`.
 
 ## Current behavior
 
@@ -15,8 +15,8 @@ The plugin requests Discord's authenticated Quest decision endpoint using the mo
 - Shows **only Bounties that are still to complete**
 - Does not show a completed/history section
 - Does not show old Video Quest history
-- Mirrors Discord mobile's Quest Home request with `placement=4`, five decisions, ad session, heartbeat session and connection context
-- Falls back to Discord desktop's `/quests/decision` delivery path when the mobile carousel request returns no Bounties
+- Mirrors Discord mobile's current Bounty request with `placement=5` (`VIDEO_MODAL_MOBILE`), five decisions, ad session, heartbeat session and connection context
+- Uses `/quests/get-decisions` for the list, matching the current Android Quest Home hook instead of mixing in the desktop single-decision endpoint
 - Uses the Bounty's **`video_hls` full stream** for playback
 - Does **not** substitute the short `video_preview` clip when the full stream is unavailable
 - Tracks the configured `reward_timer_seconds` only while the full HLS video is actually playing, Discord is visible, and the window is focused
