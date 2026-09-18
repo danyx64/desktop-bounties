@@ -39,11 +39,59 @@
 }
 
 .vc-desktop-bounties-sectionHeader {
+    position: relative;
+    isolation: isolate;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 24px;
-    margin-bottom: 20px;
+    margin-bottom: 22px;
+    padding: 18px 20px;
+    overflow: hidden;
+    border: 1px solid var(--vc-db-border);
+    border-radius: 14px;
+    background:
+        radial-gradient(circle at 8% 10%, color-mix(in srgb, var(--vc-db-brand) 16%, transparent), transparent 34%),
+        linear-gradient(135deg, color-mix(in srgb, var(--vc-db-brand) 7%, var(--vc-db-surface)), var(--vc-db-surface));
+}
+
+.vc-desktop-bounties-sectionHeader::after {
+    position: absolute;
+    z-index: -1;
+    right: -52px;
+    bottom: -76px;
+    width: 190px;
+    height: 190px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--vc-db-brand) 9%, transparent);
+    content: "";
+    filter: blur(24px);
+    pointer-events: none;
+}
+
+.vc-desktop-bounties-headerLead {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.vc-desktop-bounties-headerIcon {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 44px;
+    border: 1px solid color-mix(in srgb, var(--vc-db-brand) 38%, var(--vc-db-border));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--vc-db-brand) 18%, var(--vc-db-surface-alt));
+    color: var(--vc-db-strong);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
+}
+
+.vc-desktop-bounties-headerIcon svg {
+    width: 25px;
+    height: 25px;
 }
 
 .vc-desktop-bounties-headingCopy {
@@ -112,11 +160,14 @@
 
 .vc-desktop-bounties-card {
     color: var(--vc-db-text);
-    transition: border-color 120ms ease, background-color 120ms ease;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 8%);
+    transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .vc-desktop-bounties-card:hover {
-    border-color: var(--vc-db-border-strong);
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--vc-db-brand) 36%, var(--vc-db-border-strong));
+    box-shadow: 0 12px 30px rgb(0 0 0 / 14%);
 }
 
 .vc-desktop-bounties-media {
@@ -175,7 +226,7 @@
     backdrop-filter: blur(8px);
 }
 
-.vc-desktop-bounties-statusPill--progress {
+.vc-desktop-bounties-statusPill-progress {
     background: color-mix(in srgb, var(--vc-db-brand) 68%, var(--vc-db-bg));
 }
 
@@ -223,7 +274,8 @@
 .vc-desktop-bounties-progress > div {
     height: 100%;
     border-radius: inherit;
-    background: var(--vc-db-brand);
+    background: linear-gradient(90deg, var(--vc-db-brand), color-mix(in srgb, var(--vc-db-brand) 72%, white));
+    box-shadow: 0 0 10px color-mix(in srgb, var(--vc-db-brand) 28%, transparent);
     transition: width 180ms linear;
 }
 
@@ -315,6 +367,13 @@
 .vc-desktop-bounties-secondaryButton:disabled {
     opacity: .45;
     cursor: not-allowed;
+}
+
+.vc-desktop-bounties-primaryButton:focus-visible,
+.vc-desktop-bounties-secondaryButton:focus-visible,
+.vc-desktop-bounties-navLink:focus-visible {
+    outline: 2px solid var(--vc-db-brand);
+    outline-offset: 2px;
 }
 
 .vc-desktop-bounties-infoBox,
@@ -426,6 +485,19 @@
     to { background-position: -200% 0; }
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .vc-desktop-bounties-card,
+    .vc-desktop-bounties-progress > div,
+    .vc-desktop-bounties-skeletonCard {
+        animation: none;
+        transition: none;
+    }
+
+    .vc-desktop-bounties-card:hover {
+        transform: none;
+    }
+}
+
 @media (max-width: 900px) {
     .vc-desktop-bounties-pageInner {
         width: min(100% - 32px, 1200px);
@@ -446,7 +518,12 @@
     .vc-desktop-bounties-sectionHeader {
         align-items: stretch;
         flex-direction: column;
-        gap: 14px;
+        gap: 16px;
+        padding: 16px;
+    }
+
+    .vc-desktop-bounties-headerLead {
+        align-items: flex-start;
     }
 
     .vc-desktop-bounties-nativeOrb {
