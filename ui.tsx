@@ -138,8 +138,6 @@ function FullBountyVideo({
     onAvailable,
     onUnavailable,
     onProgress,
-    onPlay,
-    onPause,
     onEnded
 }: {
     hlsUrl: string;
@@ -147,10 +145,8 @@ function FullBountyVideo({
     initialTime: number;
     onAvailable: () => void;
     onUnavailable: () => void;
-    onProgress: (currentTime: number, duration: number) => void;
-    onPlay: () => void;
-    onPause: () => void;
-    onEnded: (currentTime: number, duration: number) => void;
+    onProgress: (currentTime: number) => void;
+    onEnded: () => void;
 }) {
     const videoRef = React.useRef<HTMLVideoElement>(null);
     const [activated, setActivated] = React.useState(false);
@@ -176,6 +172,24 @@ function FullBountyVideo({
 
         observer.observe(video);
         return () => observer.disconnect();
+    }, []);
+
+    React.useEffect(() => {
+        const pauseWhenBackgrounded = () => {
+            const video = videoRef.current;
+            if (!video) return;
+            if (document.visibilityState !== "visible" || !document.hasFocus()) {
+                try { video.pause(); } catch { }
+            }
+        };
+
+        document.addEventListener("visibilitychange", pauseWhenBackgrounded);
+        window.addEventListener("blur", pauseWhenBackgrounded);
+
+        return () => {
+            document.removeEventListener("visibilitychange", pauseWhenBackgrounded);
+            window.removeEventListener("blur", pauseWhenBackgrounded);
+        };
     }, []);
 
     React.useEffect(() => {
@@ -262,16 +276,8 @@ function FullBountyVideo({
                     video.currentTime = Math.min(initialTime, Math.max(0, duration - 0.25));
                 }
             }}
-            onTimeUpdate={event => {
-                const video = event.currentTarget;
-                onProgress(video.currentTime, durationOf(video));
-            }}
-            onPlay={onPlay}
-            onPause={onPause}
-            onEnded={event => {
-                const video = event.currentTarget;
-                onEnded(video.currentTime, durationOf(video));
-            }}
+            onTimeUpdate={event => onProgress(event.currentTarget.currentTime)}
+            onEnded={onEnded}
         />
     );
 }
@@ -425,12 +431,7 @@ function BountyCard({
                         onAvailable={() => setVideoAvailable(true)}
                         onUnavailable={() => setVideoAvailable(false)}
                         onProgress={handleProgress}
-                        onPlay={() => undefined}
-                        onPause={() => undefined}
-                        onEnded={(currentTime, duration) => {
-                            const completedTime = Math.max(currentTime, duration > 0 ? duration : currentTime);
-                            setMaxVideoProgressSeconds(Math.min(targetSeconds, Math.max(targetSeconds, completedTime)));
-                        }}
+                        onEnded={() => setMaxVideoProgressSeconds(targetSeconds)}
                     />
                 ) : image ? (
                     <img src={image} alt="" loading="lazy" />
