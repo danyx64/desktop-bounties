@@ -32,6 +32,12 @@
     box-sizing: border-box;
 }
 
+/* Keep the Home shortcut on Discord's own generated classes for sizing and hover. */
+.vc-desktop-bounties-navShell,
+.vc-desktop-bounties-navLink {
+    font: inherit;
+}
+
 .vc-desktop-bounties-pageInner {
     width: min(1200px, calc(100% - 64px));
     margin: 0 auto;
